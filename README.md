@@ -41,11 +41,11 @@ This project is a classic Tic-Tac-Toe game where two players can take turns mark
 
 1. Clone the repository:
    ```
-   git clone https://github.com/your-username/tic-tac-toe.git
+   git clone https://github.com/mrdemonbkgit/tic-tac-toe-2.git
    ```
 2. Navigate to the project directory:
    ```
-   cd tic-tac-toe
+   cd tic-tac-toe-2
    ```
 3. Open `index.html` in your web browser to play the game locally.
 
