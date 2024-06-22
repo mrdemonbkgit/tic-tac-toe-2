@@ -1,4 +1,3 @@
-```markdown
 # Tic-Tac-Toe Game
 
 A simple, web-based Tic-Tac-Toe game implemented using HTML, CSS, and JavaScript.
@@ -102,4 +101,3 @@ Your game will be available at `https://your-username.github.io/repository-name/
 - Add animations for placing marks and winning
 
 For any issues or suggestions, please open an issue on the GitHub repository.
-```
