@@ -11,6 +11,24 @@
         <h1>Tic-Tac-Toe</h1>
         
         <div id="status-display">Player X's turn</div>
+
+        <div class="game-controls">
+            <div>
+                <label>Game Mode:</label>
+                <select id="gameMode">
+                    <option value="PvP">Player vs Player</option>
+                    <option value="PvAI">Player vs AI</option>
+                </select>
+            </div>
+            <div id="aiDifficultyControl" style="display: none;">
+                <label>AI Difficulty:</label>
+                <select id="aiDifficulty">
+                    <option value="Easy">Easy</option>
+                    <option value="Medium" selected>Medium</option>
+                    <option value="Hard">Hard</option>
+                </select>
+            </div>
+        </div>
         
         <div class="game-board">
             <div class="cell" data-cell-index="0"></div>
