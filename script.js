@@ -4,6 +4,7 @@ let currentPlayer = "X";
 let gameState = ["", "", "", "", "", "", "", "", ""];
 let gameMode = 'PvP'; // 'PvP' or 'PvAI'
 let aiDifficulty = 'Medium'; // 'Easy', 'Medium', or 'Hard'
+let isPlayerTurn = true;
 
 const winningConditions = [
     [0, 1, 2],
@@ -29,13 +30,11 @@ document.getElementById('aiDifficulty').addEventListener('change', function(e) {
 });
 
 function makeAIMove() {
-    statusDisplay.innerHTML = "AI is thinking...";
-    setTimeout(() => {
-        const aiMove = getBestMove();
-        const cell = document.querySelector(`[data-cell-index="${aiMove}"]`);
-        handleCellPlayed(cell, aiMove);
-        handleResultValidation();
-    }, 500);
+    const aiMove = getBestMove();
+    const cell = document.querySelector(`[data-cell-index="${aiMove}"]`);
+    handleCellPlayed(cell, aiMove);
+    handleResultValidation();
+    isPlayerTurn = true;
 }
 
 function getBestMove() {
@@ -131,7 +130,7 @@ function handleCellClick(clickedCellEvent) {
     const clickedCell = clickedCellEvent.target;
     const clickedCellIndex = parseInt(clickedCell.getAttribute('data-cell-index'));
 
-    if (gameState[clickedCellIndex] !== "" || !gameActive) {
+    if (gameState[clickedCellIndex] !== "" || !gameActive || (gameMode === 'PvAI' && !isPlayerTurn)) {
         return;
     }
 
@@ -139,7 +138,8 @@ function handleCellClick(clickedCellEvent) {
     handleResultValidation();
 
     if (gameMode === 'PvAI' && gameActive) {
-        // Delay AI move
+        isPlayerTurn = false;
+        statusDisplay.innerHTML = "AI is thinking...";
         setTimeout(() => {
             makeAIMove();
         }, 500);
@@ -185,16 +185,23 @@ function handleResultValidation() {
 
 function handlePlayerChange() {
     currentPlayer = currentPlayer === "X" ? "O" : "X";
-    statusDisplay.innerHTML = `Player ${currentPlayer}'s turn`;
+    if (gameMode === 'PvAI') {
+        isPlayerTurn = currentPlayer === "X";
+        statusDisplay.innerHTML = isPlayerTurn ? "Your turn (X)" : "AI's turn (O)";
+    } else {
+        statusDisplay.innerHTML = `Player ${currentPlayer}'s turn`;
+    }
 }
 
 function handleRestartGame() {
     gameActive = true;
     currentPlayer = "X";
     gameState = ["", "", "", "", "", "", "", "", ""];
+    isPlayerTurn = true;
     statusDisplay.innerHTML = gameMode === 'PvAI' ? "Your turn (X)" : `Player ${currentPlayer}'s turn`;
     document.querySelectorAll('.cell').forEach(cell => cell.innerHTML = "");
     if (gameMode === 'PvAI' && currentPlayer === "O") {
+        isPlayerTurn = false;
         makeAIMove();
     }
 }
