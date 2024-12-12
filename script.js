@@ -270,7 +270,12 @@ async function updateQRCode(amount = null) {
     const endpoint = getLNURLEndpoint(address);
     try {
         const lnurlData = await fetchLNURLData(endpoint);
-        const encodedLNURL = encodeLNURL(endpoint + (amount ? `?amount=${amount * 1000}` : ''));
+        const callback = lnurlData.callback;
+        const finalUrl = amount
+            ? `${callback}?amount=${amount * 1000}`
+            : endpoint;
+        const encodedLNURL = encodeLNURL(finalUrl);
+
         document.getElementById('qrcode').innerHTML = '';
         new QRCode(document.getElementById('qrcode'), {
             text: `lightning:${encodedLNURL}`,
