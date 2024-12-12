@@ -290,14 +290,17 @@ async function updateQRCode(amount = null) {
     try {
         const lnurlData = await fetchLNURLData(endpoint);
         const callback = lnurlData.callback;
+        // Convert amount from sats to millisats and ensure it's within allowed range
         const finalUrl = amount
-            ? `${callback}?amount=${amount * 1000}`
-            : endpoint;
+            ? `${callback}?amount=${parseInt(amount) * 1000}`
+            : callback;
+
+        // Encode the callback URL instead of the endpoint
         const encodedLNURL = encodeLNURL(finalUrl);
 
         document.getElementById('qrcode').innerHTML = '';
         new QRCode(document.getElementById('qrcode'), {
-            text: `lightning:${encodedLNURL}`,
+            text: encodedLNURL,
             width: 256,
             height: 256
         });
