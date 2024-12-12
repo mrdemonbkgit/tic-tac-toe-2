@@ -240,5 +240,41 @@ function playSingleGame() {
 
 // runAITest();
 
+// Game event listeners
 document.querySelectorAll('.cell').forEach(cell => cell.addEventListener('click', handleCellClick));
 document.querySelector('#restart').addEventListener('click', handleRestartGame);
+
+// Donation Modal Functionality
+const modal = document.getElementById('donationModal');
+const btn = document.getElementById('donateBtn');
+const span = document.getElementsByClassName('close')[0];
+const lightningAddress = document.getElementById('lightningAddress');
+
+// Create QR code when modal opens
+btn.onclick = function() {
+    modal.style.display = 'block';
+    if (!document.getElementById('qrcode').hasChildNodes()) {
+        new QRCode(document.getElementById('qrcode'), {
+            text: 'lightning:steelybowling85@walletofsatoshi.com',
+            width: 256,
+            height: 256
+        });
+    }
+}
+
+// Close modal
+span.onclick = function() {
+    modal.style.display = 'none';
+}
+
+window.onclick = function(event) {
+    if (event.target == modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Copy lightning address to clipboard
+lightningAddress.onclick = function() {
+    navigator.clipboard.writeText('steelybowling85@walletofsatoshi.com');
+    alert('Lightning address copied to clipboard!');
+}

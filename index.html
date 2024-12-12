@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tic-Tac-Toe Game</title>
+    <title>Tic-Tac-Toe Game - built by Devin</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
     <div class="game-container">
-        <h1>Tic-Tac-Toe</h1>
-        
+        <h1>Tic-Tac-Toe - built by Devin</h1>
+
         <div id="status-display">Player X's turn</div>
 
         <div class="game-controls">
@@ -29,7 +30,22 @@
                 </select>
             </div>
         </div>
-        
+
+        <div class="donation-section">
+            <button id="donateBtn" class="donate-button">⚡ Donate with Bitcoin Lightning</button>
+            <div id="donationModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close">&times;</span>
+                    <h2>Donate with Bitcoin Lightning</h2>
+                    <p>Scan QR code or click to copy address:</p>
+                    <div id="qrcode"></div>
+                    <div class="lightning-address" id="lightningAddress">
+                        steelybowling85@walletofsatoshi.com
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="game-board">
             <div class="cell" data-cell-index="0"></div>
             <div class="cell" data-cell-index="1"></div>
@@ -41,7 +57,7 @@
             <div class="cell" data-cell-index="7"></div>
             <div class="cell" data-cell-index="8"></div>
         </div>
-        
+
         <button id="restart">Restart Game</button>
     </div>
 
