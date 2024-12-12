@@ -291,17 +291,27 @@ async function updateQRCode(amount = null) {
     try {
         const lnurlData = await fetchLNURLData(endpoint);
         const callback = lnurlData.callback;
+
         // Convert amount from sats to millisats and ensure it's within allowed range
-        const finalUrl = amount
-            ? `${callback}?amount=${parseInt(amount) * 1000}`
-            : callback;
+        let finalUrl;
+        if (amount) {
+            const millisats = parseInt(amount) * 1000;
+            if (millisats < lnurlData.minSendable || millisats > lnurlData.maxSendable) {
+                throw new Error(`Amount must be between ${lnurlData.minSendable / 1000} and ${lnurlData.maxSendable / 1000} sats`);
+            }
+            finalUrl = `${callback}?amount=${millisats}`;
+        } else {
+            finalUrl = endpoint;
+        }
 
-        // Encode the callback URL instead of the endpoint
+        // Generate LNURL for the appropriate URL
         const encodedLNURL = encodeLNURL(finalUrl);
+        const lnurlString = `lightning:${encodedLNURL}`;
 
+        // Generate QR code with lightning: prefix
         document.getElementById('qrcode').innerHTML = '';
         new QRCode(document.getElementById('qrcode'), {
-            text: encodedLNURL,
+            text: lnurlString,
             width: 256,
             height: 256
         });
