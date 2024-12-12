@@ -249,6 +249,27 @@ const modal = document.getElementById('donationModal');
 const btn = document.getElementById('donateBtn');
 const span = document.getElementsByClassName('close')[0];
 const lightningAddress = document.getElementById('lightningAddress');
+let selectedAmount = null;
+
+// Handle preset amount selection
+document.querySelectorAll('.preset-btn').forEach(button => {
+    button.addEventListener('click', function() {
+        const amount = this.dataset.amount;
+        selectedAmount = amount;
+
+        // Update button styles
+        document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('selected'));
+        this.classList.add('selected');
+
+        // Update QR code with amount
+        document.getElementById('qrcode').innerHTML = '';
+        new QRCode(document.getElementById('qrcode'), {
+            text: `lightning:steelybowling85@walletofsatoshi.com?amount=${amount}`,
+            width: 256,
+            height: 256
+        });
+    });
+});
 
 // Create QR code when modal opens
 btn.onclick = function() {
@@ -265,16 +286,27 @@ btn.onclick = function() {
 // Close modal
 span.onclick = function() {
     modal.style.display = 'none';
-}
-
-window.onclick = function(event) {
-    if (event.target == modal) {
-        modal.style.display = 'none';
-    }
+    // Reset selection when modal closes
+    selectedAmount = null;
+    document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('selected'));
 }
 
 // Copy lightning address to clipboard
 lightningAddress.onclick = function() {
-    navigator.clipboard.writeText('steelybowling85@walletofsatoshi.com');
+    const address = 'steelybowling85@walletofsatoshi.com';
+    navigator.clipboard.writeText(selectedAmount ?
+        `lightning:${address}?amount=${selectedAmount}` :
+        address
+    );
     alert('Lightning address copied to clipboard!');
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    if (event.target == modal) {
+        modal.style.display = 'none';
+        // Reset selection when modal closes
+        selectedAmount = null;
+        document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('selected'));
+    }
 }
