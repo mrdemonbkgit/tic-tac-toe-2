@@ -163,7 +163,7 @@ function handleResultValidation() {
         }
         if (a === b && b === c) {
             roundWon = true;
-            break
+            break;
         }
     }
 
