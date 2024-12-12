@@ -272,9 +272,10 @@ async function fetchLNURLData(endpoint) {
 function encodeLNURL(url) {
     try {
         console.log('Encoding URL:', url);
-        // Use bech32Converting library for browser compatibility
-        const bech32Converter = bech32Converting.bech32.encoder('lnurl');
-        const encoded = bech32Converter(url.toLowerCase());
+        // Use TextEncoder for browser compatibility
+        const encoder = new TextEncoder();
+        const words = window.bech32.toWords(encoder.encode(url.toLowerCase()));
+        const encoded = window.bech32.encode('lnurl', words, 1023);
         console.log('Encoded LNURL:', encoded);
         return encoded.toUpperCase();
     } catch (error) {
