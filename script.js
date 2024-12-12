@@ -364,8 +364,23 @@ lightningAddress.onclick = async function() {
     const address = 'steelybowling85@walletofsatoshi.com';
     const endpoint = getLNURLEndpoint(address);
     try {
-        const encodedLNURL = encodeLNURL(endpoint + (selectedAmount ? `?amount=${selectedAmount * 1000}` : ''));
-        await navigator.clipboard.writeText(`lightning:${encodedLNURL}`);
+        const lnurlData = await fetchLNURLData(endpoint);
+        const callback = lnurlData.callback;
+
+        let finalUrl;
+        if (selectedAmount) {
+            const millisats = parseInt(selectedAmount) * 1000;
+            if (millisats < lnurlData.minSendable || millisats > lnurlData.maxSendable) {
+                throw new Error(`Amount must be between ${lnurlData.minSendable / 1000} and ${lnurlData.maxSendable / 1000} sats`);
+            }
+            finalUrl = `${callback}?amount=${millisats}`;
+        } else {
+            finalUrl = endpoint;
+        }
+
+        const encodedLNURL = encodeLNURL(finalUrl);
+        const lnurlString = `lightning:${encodedLNURL}`;
+        await navigator.clipboard.writeText(lnurlString);
         alert('Lightning payment link copied to clipboard!');
     } catch (error) {
         console.error('Error copying payment link:', error);
