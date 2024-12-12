@@ -7,6 +7,14 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://bundle.run/bech32@2.0.0"></script>
+    <script>
+        window.addEventListener('load', function() {
+            window.bech32 = window.bech32Converting || window.bech32;
+            if (!window.bech32 || typeof window.bech32.toWords !== 'function') {
+                console.error('Failed to initialize bech32 library');
+            }
+        });
+    </script>
 </head>
 <body>
     <div class="game-container">

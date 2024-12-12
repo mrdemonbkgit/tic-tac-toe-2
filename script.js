@@ -269,18 +269,28 @@ async function fetchLNURLData(endpoint) {
     }
 }
 
-function encodeLNURL(url) {
+async function encodeLNURL(url) {
     try {
         console.log('Encoding URL:', url);
-        // Use TextEncoder for browser compatibility
+        // Wait for bech32 library to be available (up to 5 attempts)
+        let attempts = 0;
+        while (!window.bech32 || typeof window.bech32.toWords !== 'function') {
+            if (attempts >= 5) {
+                throw new Error('Bech32 library not available after multiple attempts');
+            }
+            attempts++;
+            // Wait 100ms between attempts
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
         const encoder = new TextEncoder();
         const words = window.bech32.toWords(encoder.encode(url.toLowerCase()));
         const encoded = window.bech32.encode('lnurl', words, 1023);
-        console.log('Encoded LNURL:', encoded);
+        console.log('Successfully encoded LNURL:', encoded);
         return encoded.toUpperCase();
     } catch (error) {
         console.error('LNURL encoding error:', error);
-        throw new Error(`Failed to encode LNURL: ${error.message}`);
+        throw error;
     }
 }
 
@@ -305,7 +315,7 @@ async function updateQRCode(amount = null) {
         }
 
         // Generate LNURL for the appropriate URL
-        const encodedLNURL = encodeLNURL(finalUrl);
+        const encodedLNURL = await encodeLNURL(finalUrl);
         const lnurlString = `lightning:${encodedLNURL}`;
 
         // Generate QR code with lightning: prefix
