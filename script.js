@@ -250,18 +250,36 @@ function getLNURLEndpoint(address) {
     return `https://${domain}/.well-known/lnurlp/${username}`;
 }
 
-async function fetchLNURLData(endpoint, amount = null) {
-    const response = await fetch(endpoint);
-    const data = await response.json();
-    if (data.status === 'ERROR') {
-        throw new Error(data.reason);
+async function fetchLNURLData(endpoint) {
+    try {
+        console.log('Fetching LNURL data from:', endpoint);
+        const response = await fetch(endpoint);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('LNURL data received:', data);
+        if (!data.callback) {
+            throw new Error('Invalid LNURL response: missing callback URL');
+        }
+        return data;
+    } catch (error) {
+        console.error('LNURL data fetch error:', error);
+        throw new Error(`Failed to fetch LNURL data: ${error.message}`);
     }
-    return data;
 }
 
 function encodeLNURL(url) {
-    const words = bech32.toWords(Buffer.from(url, 'utf8'));
-    return bech32.encode('lnurl', words, 1023).toUpperCase();
+    try {
+        console.log('Encoding URL:', url);
+        const words = bech32.toWords(Buffer.from(url.toLowerCase(), 'utf8'));
+        const encoded = bech32.encode('lnurl', words, 1023);
+        console.log('Encoded LNURL:', encoded);
+        return encoded;
+    } catch (error) {
+        console.error('LNURL encoding error:', error);
+        throw new Error(`Failed to encode LNURL: ${error.message}`);
+    }
 }
 
 // QR code generation function
