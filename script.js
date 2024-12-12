@@ -244,6 +244,45 @@ function playSingleGame() {
 document.querySelectorAll('.cell').forEach(cell => cell.addEventListener('click', handleCellClick));
 document.querySelector('#restart').addEventListener('click', handleRestartGame);
 
+// LNURL utilities
+function getLNURLEndpoint(address) {
+    const [username, domain] = address.split('@');
+    return `https://${domain}/.well-known/lnurlp/${username}`;
+}
+
+async function fetchLNURLData(endpoint, amount = null) {
+    const response = await fetch(endpoint);
+    const data = await response.json();
+    if (data.status === 'ERROR') {
+        throw new Error(data.reason);
+    }
+    return data;
+}
+
+function encodeLNURL(url) {
+    const words = bech32.toWords(Buffer.from(url, 'utf8'));
+    return bech32.encode('lnurl', words, 1023).toUpperCase();
+}
+
+// QR code generation function
+async function updateQRCode(amount = null) {
+    const address = 'steelybowling85@walletofsatoshi.com';
+    const endpoint = getLNURLEndpoint(address);
+    try {
+        const lnurlData = await fetchLNURLData(endpoint);
+        const encodedLNURL = encodeLNURL(endpoint + (amount ? `?amount=${amount * 1000}` : ''));
+        document.getElementById('qrcode').innerHTML = '';
+        new QRCode(document.getElementById('qrcode'), {
+            text: `lightning:${encodedLNURL}`,
+            width: 256,
+            height: 256
+        });
+    } catch (error) {
+        console.error('Error generating QR code:', error);
+        alert('Error generating Lightning payment QR code. Please try again.');
+    }
+}
+
 // Donation Modal Functionality
 const modal = document.getElementById('donationModal');
 const btn = document.getElementById('donateBtn');
@@ -253,7 +292,7 @@ let selectedAmount = null;
 
 // Handle preset amount selection
 document.querySelectorAll('.preset-btn').forEach(button => {
-    button.addEventListener('click', function() {
+    button.addEventListener('click', async function() {
         const amount = this.dataset.amount;
         selectedAmount = amount;
 
@@ -262,24 +301,15 @@ document.querySelectorAll('.preset-btn').forEach(button => {
         this.classList.add('selected');
 
         // Update QR code with amount
-        document.getElementById('qrcode').innerHTML = '';
-        new QRCode(document.getElementById('qrcode'), {
-            text: `lightning:steelybowling85@walletofsatoshi.com?amount=${amount}`,
-            width: 256,
-            height: 256
-        });
+        await updateQRCode(amount);
     });
 });
 
 // Create QR code when modal opens
-btn.onclick = function() {
+btn.onclick = async function() {
     modal.style.display = 'block';
     if (!document.getElementById('qrcode').hasChildNodes()) {
-        new QRCode(document.getElementById('qrcode'), {
-            text: 'lightning:steelybowling85@walletofsatoshi.com',
-            width: 256,
-            height: 256
-        });
+        await updateQRCode();
     }
 }
 
@@ -292,13 +322,17 @@ span.onclick = function() {
 }
 
 // Copy lightning address to clipboard
-lightningAddress.onclick = function() {
+lightningAddress.onclick = async function() {
     const address = 'steelybowling85@walletofsatoshi.com';
-    navigator.clipboard.writeText(selectedAmount ?
-        `lightning:${address}?amount=${selectedAmount}` :
-        address
-    );
-    alert('Lightning address copied to clipboard!');
+    const endpoint = getLNURLEndpoint(address);
+    try {
+        const encodedLNURL = encodeLNURL(endpoint + (selectedAmount ? `?amount=${selectedAmount * 1000}` : ''));
+        await navigator.clipboard.writeText(`lightning:${encodedLNURL}`);
+        alert('Lightning payment link copied to clipboard!');
+    } catch (error) {
+        console.error('Error copying payment link:', error);
+        alert('Error generating Lightning payment link. Please try again.');
+    }
 }
 
 // Close modal when clicking outside
