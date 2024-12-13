@@ -340,33 +340,39 @@ async function updateQRCode(amount = null) {
             throw new Error('QR code library not loaded');
         }
 
-        const address = 'steelybowling85@walletofsatoshi.com';
-        const endpoint = getLNURLEndpoint(address);
-        const lnurlData = await fetchLNURLData(endpoint);
-        const callback = lnurlData.callback;
-
-        // Convert amount from sats to millisats and ensure it's within allowed range
-        let finalUrl;
-        if (amount) {
-            const millisats = parseInt(amount) * 1000;
-            if (millisats < lnurlData.minSendable || millisats > lnurlData.maxSendable) {
-                throw new Error(`Amount must be between ${lnurlData.minSendable / 1000} and ${lnurlData.maxSendable / 1000} sats`);
-            }
-            finalUrl = `${callback}?amount=${millisats}`;
-        } else {
-            finalUrl = endpoint;
-        }
-
         // Initialize bech32 if not already initialized
         if (!bech32Initialized) {
             initializeBech32();
         }
 
-        // Generate LNURL for the appropriate URL
-        const encodedLNURL = await encodeLNURL(finalUrl);
-        const lnurlString = `lightning:${encodedLNURL}`;
+        const address = 'steelybowling85@walletofsatoshi.com';
+        const [username, domain] = address.split('@');
+        const baseUrl = `https://${domain}/.well-known/lnurlp/${username}`;
 
-        // Generate QR code with lightning: prefix
+        // Fetch LNURL data first to get callback URL
+        const lnurlData = await fetchLNURLData(baseUrl);
+        console.log('LNURL data:', lnurlData);
+
+        // Construct payment URL
+        let paymentUrl;
+        if (amount) {
+            const millisats = parseInt(amount) * 1000;
+            if (millisats < lnurlData.minSendable || millisats > lnurlData.maxSendable) {
+                throw new Error(`Amount must be between ${lnurlData.minSendable / 1000} and ${lnurlData.maxSendable / 1000} sats`);
+            }
+            paymentUrl = `${lnurlData.callback}?amount=${millisats}`;
+        } else {
+            paymentUrl = baseUrl;
+        }
+
+        console.log('Payment URL:', paymentUrl);
+
+        // Generate LNURL
+        const encodedLNURL = await encodeLNURL(paymentUrl);
+        const lnurlString = `lightning:${encodedLNURL.toLowerCase()}`;
+        console.log('Final LNURL string:', lnurlString);
+
+        // Generate QR code
         document.getElementById('qrcode').innerHTML = '';
         const qr = qrcode(0, 'L');
         qr.addData(lnurlString, 'Byte');
