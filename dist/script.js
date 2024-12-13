@@ -408,9 +408,10 @@ async function updateQRCode(amount = null) {
                 }
             }
 
-            // Convert canvas to image
+            // Convert canvas to image and ensure proper data URL format
             const img = new Image();
-            img.src = canvas.toDataURL('image/png');
+            const dataUrl = canvas.toDataURL('image/png').replace(/^data:image\/[^;]*/, 'data:image/png');
+            img.src = dataUrl;
             qrDiv.appendChild(img);
 
             console.log('QR code generated successfully');
