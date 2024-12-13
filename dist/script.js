@@ -386,7 +386,9 @@ async function updateQRCode(amount = null) {
         // Create QR code image with proper data URL formatting
         const qrImage = document.createElement('img');
         const dataUrl = qr.createDataURL(2);
-        qrImage.src = dataUrl.replace(/^data:image\/gif;base64,/, 'data:image/png;base64,');
+        // Ensure proper data URL format with correct MIME type and base64 encoding
+        const base64Data = dataUrl.split(',')[1];
+        qrImage.src = `data:image/png;base64,${base64Data}`;
         qrImage.style.width = '250px';
         qrImage.style.height = '250px';
         qrContainer.appendChild(qrImage);
