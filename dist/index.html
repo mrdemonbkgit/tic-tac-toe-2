@@ -71,23 +71,18 @@
     </footer>
 
     <script>
-        // Initialize QR code and bech32 libraries before loading main script
-        function loadMainScript() {
-            if (typeof qrcode === 'function') {
-                const script = document.createElement('script');
-                script.src = 'script.js';
-                script.onload = function() {
-                    // Initialize bech32 after script loads
-                    if (typeof initializeBech32 === 'function') {
-                        initializeBech32();
-                    }
-                };
-                document.body.appendChild(script);
-            } else {
-                // Retry if QR code library isn't loaded yet
-                setTimeout(loadMainScript, 100);
+        // Initialize QR code library before loading main script
+        async function loadMainScript() {
+            // Wait for QR code library to be available
+            while (typeof qrcode !== 'function') {
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
+
+            const script = document.createElement('script');
+            script.src = 'script.js';
+            document.body.appendChild(script);
         }
+
         window.addEventListener('load', loadMainScript);
     </script>
 </body>

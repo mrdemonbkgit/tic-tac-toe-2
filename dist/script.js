@@ -21,20 +21,50 @@ const winningConditions = [
 const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
 
-// Initialize bech32 functionality
-let bech32Initialized = false;
+const bech32 = {
+    toWords(bytes) {
+        const ret = [];
+        let acc = 0;
+        let bits = 0;
+        const maxv = (1 << 5) - 1;
+        const max_acc = (1 << (8 - 5)) - 1;
 
-function initializeBech32() {
-    if (!CHARSET || !GENERATOR) {
-        throw new Error('Failed to initialize bech32 library: missing constants');
+        for (let p = 0; p < bytes.length; ++p) {
+            acc = (acc << 8) | bytes[p];
+            bits += 8;
+            while (bits >= 5) {
+                bits -= 5;
+                ret.push((acc >> bits) & maxv);
+            }
+        }
+
+        if (bits > 0) {
+            ret.push((acc << (5 - bits)) & maxv);
+        }
+
+        return ret;
+    },
+
+    encode(hrp, data, limit) {
+        const combined = [];
+        let check = 1;
+
+        // Convert HRP to bytes
+        const hrpBytes = Array.from(hrp).map(c => c.charCodeAt(0) & 0x1f);
+
+        // Calculate checksum
+        check = bech32_polymod([...hrpBytes, 0, ...data]);
+        check ^= 1;
+
+        // Convert to 5-bit groups
+        const words = [...data, ...Array(6).fill(0).map((_, i) => (check >> (5 * (5 - i))) & 31)];
+
+        // Encode to base32
+        return hrp + '1' + words.map(i => CHARSET.charAt(i)).join('');
     }
-    bech32Initialized = true;
-}
+};
 
 function bech32_polymod(values) {
-    if (!bech32Initialized) {
-        initializeBech32();
-    }
     let chk = 1;
     for (let p = 0; p < values.length; ++p) {
         const top = chk >> 25;
@@ -276,27 +306,23 @@ document.querySelectorAll('.cell').forEach(cell => cell.addEventListener('click'
 document.querySelector('#restart').addEventListener('click', handleRestartGame);
 
 // LNURL utilities
-function getLNURLEndpoint(address) {
-    const [username, domain] = address.split('@');
-    return `https://${domain}/.well-known/lnurlp/${username}`;
+function getLNURLEndpoint() {
+    const username = 'steelybowling85';
+    return `https://walletofsatoshi.com/.well-known/lnurlp/${username}`;
 }
 
 async function fetchLNURLData(endpoint) {
     try {
-        console.log('Fetching LNURL data from:', endpoint);
         const response = await fetch(endpoint);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        console.log('LNURL data received:', data);
-        if (!data.callback) {
-            throw new Error('Invalid LNURL response: missing callback URL');
-        }
+        console.log('LNURL data:', data);
         return data;
     } catch (error) {
-        console.error('LNURL data fetch error:', error);
-        throw new Error(`Failed to fetch LNURL data: ${error.message}`);
+        console.error('Error fetching LNURL data:', error);
+        throw error;
     }
 }
 
@@ -304,41 +330,20 @@ async function encodeLNURL(url) {
     try {
         console.log('Encoding URL:', url);
 
-        // URL encode the parameters properly
-        const encodedUrl = encodeURI(url);
+        // Convert URL to bytes
+        const bytes = Array.from(url).map(char => char.charCodeAt(0));
+        console.log('URL bytes:', bytes);
 
-        // Convert URL to bytes using TextEncoder
-        const encoder = new TextEncoder();
-        const urlBytes = encoder.encode(encodedUrl);
+        // Use our custom bech32 implementation
+        const words = bech32.toWords(bytes);
+        console.log('Words:', words);
 
-        // Convert to 5-bit words using proper bech32 encoding
-        const words = [];
-        for (let i = 0; i < urlBytes.length; i++) {
-            const byte = urlBytes[i];
-            words.push((byte >> 3) & 31);
-            words.push(((byte & 7) << 2) | ((i + 1 < urlBytes.length ? urlBytes[i + 1] : 0) >> 6) & 3);
-            if (i + 1 < urlBytes.length) {
-                words.push((urlBytes[i + 1] >> 1) & 31);
-                if (i + 2 < urlBytes.length) {
-                    words.push(((urlBytes[i + 1] & 1) << 4) | ((urlBytes[i + 2] >> 4) & 15));
-                    if (i + 3 < urlBytes.length) {
-                        words.push(((urlBytes[i + 2] & 15) << 1) | ((urlBytes[i + 3] >> 7) & 1));
-                    }
-                }
-            }
-        }
+        const encoded = bech32.encode('lnurl', words);
+        console.log('Encoded LNURL:', encoded);
 
-        // Convert to bech32 string using standard charset
-        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
-        let lnurl = '';
-        for (const word of words) {
-            lnurl += CHARSET.charAt(word & 31);
-        }
-
-        console.log('Successfully encoded LNURL:', lnurl);
-        return 'LNURL' + lnurl;
+        return encoded.toUpperCase();
     } catch (error) {
-        console.error('Error encoding LNURL:', error);
+        console.error('Error in encodeLNURL:', error);
         throw error;
     }
 }
@@ -346,94 +351,77 @@ async function encodeLNURL(url) {
 // QR code generation function
 async function updateQRCode(amount = null) {
     try {
-        // Check if QR code library is loaded
-        if (typeof qrcode !== 'function') {
-            throw new Error('QR code library not loaded');
-        }
+        console.log('Updating QR code with amount:', amount);
+        const qrDiv = document.getElementById('qrcode');
+        qrDiv.innerHTML = ''; // Clear existing QR code
 
-        // Initialize bech32 if not already initialized
-        if (!bech32Initialized) {
-            initializeBech32();
-        }
+        // Get the base LNURL endpoint
+        const endpoint = getLNURLEndpoint();
+        console.log('Base endpoint:', endpoint);
 
-        const address = 'steelybowling85@walletofsatoshi.com';
-        const [username, domain] = address.split('@');
-        const baseUrl = `https://${domain}/.well-known/lnurlp/${username}`;
-
-        // Fetch LNURL data first to get callback URL
-        const lnurlData = await fetchLNURLData(baseUrl);
+        // Fetch LNURL data
+        const lnurlData = await fetchLNURLData(endpoint);
         console.log('LNURL data:', lnurlData);
 
-        // Construct payment URL with proper callback handling
-        let paymentUrl;
-        if (amount) {
-            const millisats = parseInt(amount) * 1000;
-            if (millisats < lnurlData.minSendable || millisats > lnurlData.maxSendable) {
+        // Validate amount if provided
+        if (amount !== null) {
+            const amountMsat = amount * 1000; // Convert sats to millisats
+            if (amountMsat < lnurlData.minSendable || amountMsat > lnurlData.maxSendable) {
                 throw new Error(`Amount must be between ${lnurlData.minSendable / 1000} and ${lnurlData.maxSendable / 1000} sats`);
             }
-            // Use callback URL for preset amounts
-            paymentUrl = `${lnurlData.callback}?amount=${millisats}`;
-            console.log('Using callback URL with amount:', paymentUrl);
-        } else {
-            // Use base URL for initial QR code
-            paymentUrl = baseUrl;
-            console.log('Using base URL:', paymentUrl);
         }
 
-        // Generate LNURL with proper encoding
-        const encodedLNURL = await encodeLNURL(paymentUrl);
-        const lnurlString = `lightning:${encodedLNURL.toLowerCase()}`;
-        console.log('Final LNURL string:', lnurlString);
+        // Construct the callback URL with amount if provided
+        let callbackUrl = endpoint;
+        if (amount !== null) {
+            callbackUrl += `?amount=${amount * 1000}`; // Convert to millisats
+        }
 
-        // Clear previous QR code
-        const qrContainer = document.getElementById('qrcode');
-        qrContainer.innerHTML = '';
+        try {
+            // Generate LNURL using our custom bech32 implementation
+            const encodedUrl = await encodeLNURL(callbackUrl);
+            console.log('Generated LNURL:', encodedUrl);
 
-        // Create QR code with proper error correction
-        const qr = qrcode(0, 'M');
-        qr.addData(lnurlString);
-        qr.make();
+            // Create QR code with lightning: prefix
+            const qr = qrcode(0, 'L');
+            qr.addData(`lightning:${encodedUrl}`);
+            qr.make();
 
-        // Create canvas for PNG generation
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        const cellSize = 5;
-        const margin = 20;
-        const moduleCount = qr.getModuleCount();
-        const size = moduleCount * cellSize + 2 * margin;
+            // Create canvas for QR code
+            const canvas = document.createElement('canvas');
+            const size = 256;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const cellSize = size / qr.getModuleCount();
 
-        canvas.width = size;
-        canvas.height = size;
+            // Draw QR code on canvas
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, size, size);
+            ctx.fillStyle = '#000000';
 
-        // Fill background
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, size, size);
-
-        // Draw QR code
-        ctx.fillStyle = '#000000';
-        for (let row = 0; row < moduleCount; row++) {
-            for (let col = 0; col < moduleCount; col++) {
-                if (qr.isDark(row, col)) {
-                    ctx.fillRect(
-                        col * cellSize + margin,
-                        row * cellSize + margin,
-                        cellSize,
-                        cellSize
-                    );
+            for (let row = 0; row < qr.getModuleCount(); row++) {
+                for (let col = 0; col < qr.getModuleCount(); col++) {
+                    if (qr.isDark(row, col)) {
+                        ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
+                    }
                 }
             }
+
+            // Convert canvas to image
+            const img = new Image();
+            img.src = canvas.toDataURL('image/png');
+            qrDiv.appendChild(img);
+
+            console.log('QR code generated successfully');
+        } catch (error) {
+            console.error('Error in QR code generation:', error);
+            throw error;
         }
-
-        // Create and append image
-        const qrImage = new Image();
-        qrImage.src = canvas.toDataURL('image/png');
-        qrImage.style.width = '250px';
-        qrImage.style.height = '250px';
-        qrContainer.appendChild(qrImage);
-
     } catch (error) {
-        console.error('Error generating QR code:', error);
-        alert('Error generating Lightning payment QR code. Please try again.');
+        console.error('Error in updateQRCode:', error);
+        const qrDiv = document.getElementById('qrcode');
+        qrDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
     }
 }
 
@@ -462,9 +450,7 @@ document.querySelectorAll('.preset-btn').forEach(button => {
 // Create QR code when modal opens
 btn.onclick = async function() {
     modal.style.display = 'block';
-    if (!document.getElementById('qrcode').hasChildNodes()) {
-        await updateQRCode();
-    }
+    await updateQRCode();
 }
 
 // Close modal
@@ -494,7 +480,7 @@ lightningAddress.onclick = async function() {
             finalUrl = endpoint;
         }
 
-        const encodedLNURL = encodeLNURL(finalUrl);
+        const encodedLNURL = await encodeLNURL(finalUrl);
         const lnurlString = `lightning:${encodedLNURL}`;
         await navigator.clipboard.writeText(lnurlString);
         alert('Lightning payment link copied to clipboard!');
