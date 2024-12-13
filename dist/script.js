@@ -425,40 +425,18 @@ async function updateQRCode(amount = null) {
             }
         }
 
-        // Generate LNURL
+        // Generate LNURL with optimized encoding
         const encodedUrl = await encodeLNURL(callbackUrl.toString());
         console.log('Generated LNURL:', encodedUrl);
 
         // Create QR code with higher version and error correction
-        const qr = qrcode(4, 'M');
+        const qr = qrcode(10, 'L'); // Version 10 with low error correction for smaller size
         qr.addData(`lightning:${encodedUrl}`);
         qr.make();
 
-        // Create canvas for QR code
-        const canvas = document.createElement('canvas');
-        const size = 256;
-        canvas.width = size;
-        canvas.height = size;
-        const ctx = canvas.getContext('2d');
-        const cellSize = size / qr.getModuleCount();
-
-        // Draw QR code on canvas
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, size, size);
-        ctx.fillStyle = '#000000';
-
-        for (let row = 0; row < qr.getModuleCount(); row++) {
-            for (let col = 0; col < qr.getModuleCount(); col++) {
-                if (qr.isDark(row, col)) {
-                    ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-                }
-            }
-        }
-
-        // Convert canvas to image and ensure proper data URL format
+        // Create optimized QR code image
         const img = new Image();
-        const dataUrl = canvas.toDataURL('image/png').replace(/^data:image\/[^;]*/, 'data:image/png');
-        img.src = dataUrl;
+        img.src = qr.createDataURL(4); // Smaller cell size for compact QR
         qrDiv.appendChild(img);
 
         console.log('QR code generated successfully');
