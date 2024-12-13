@@ -378,16 +378,16 @@ async function updateQRCode(amount = null) {
         const qrContainer = document.getElementById('qrcode');
         qrContainer.innerHTML = '';
 
-        // Create QR code with version 40 for maximum capacity
+        // Create QR code with version 40 for maximum capacity and proper error correction
         const qr = qrcode(40, 'M');
         qr.addData(lnurlString);
         qr.make();
 
-        // Create QR code image with proper styling
+        // Create QR code image with proper data URL formatting
         const qrImage = document.createElement('img');
-        qrImage.src = qr.createDataURL(4);
-        qrImage.style.width = '200px';
-        qrImage.style.height = '200px';
+        qrImage.src = qr.createDataURL(2); // Reduced scale factor for better URL handling
+        qrImage.style.width = '250px'; // Increased display size
+        qrImage.style.height = '250px';
         qrContainer.appendChild(qrImage);
 
     } catch (error) {
