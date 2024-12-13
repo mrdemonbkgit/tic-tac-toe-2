@@ -72,10 +72,12 @@
     </footer>
 
     <script>
-        // Load main script immediately
-        const script = document.createElement('script');
-        script.src = 'script.js';
-        document.body.appendChild(script);
+        // Wait for QR code library to load before loading main script
+        window.addEventListener('load', function() {
+            const script = document.createElement('script');
+            script.src = 'script.js';
+            document.body.appendChild(script);
+        });
     </script>
 </body>
 </html>
