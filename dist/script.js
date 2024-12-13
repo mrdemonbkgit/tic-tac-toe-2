@@ -385,8 +385,9 @@ async function updateQRCode(amount = null) {
 
         // Create QR code image with proper data URL formatting
         const qrImage = document.createElement('img');
-        qrImage.src = qr.createDataURL(2); // Reduced scale factor for better URL handling
-        qrImage.style.width = '250px'; // Increased display size
+        const dataUrl = qr.createDataURL(2);
+        qrImage.src = dataUrl.replace(/^data:image\/gif;base64,/, 'data:image/png;base64,');
+        qrImage.style.width = '250px';
         qrImage.style.height = '250px';
         qrContainer.appendChild(qrImage);
 
