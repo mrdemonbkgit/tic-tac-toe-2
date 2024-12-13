@@ -382,9 +382,9 @@ async function updateQRCode(amount = null) {
             const encodedUrl = await encodeLNURL(callbackUrl);
             console.log('Generated LNURL:', encodedUrl);
 
-            // Create QR code with lightning: prefix
-            const qr = qrcode(0, 'L');
-            qr.addData(`lightning:${encodedUrl}`);
+            // Create QR code with higher version and error correction
+            const qr = qrcode(4, 'M');
+            qr.addData(`lightning:${encodedUrl.toLowerCase()}`);
             qr.make();
 
             // Create canvas for QR code
