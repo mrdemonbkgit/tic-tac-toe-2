@@ -31,22 +31,21 @@ function base64UrlEncode(str) {
 function encodeLNURL(url) {
     try {
         console.log('Encoding URL:', url);
-        // Ensure URL is properly formatted
-        const urlObj = new URL(url);
-        // Convert all URL parameters to lowercase as per spec
-        const searchParams = new URLSearchParams();
-        for (const [key, value] of urlObj.searchParams) {
-            searchParams.append(key.toLowerCase(), value);
-        }
-        // Reconstruct URL with sorted parameters
-        const formattedUrl = `${urlObj.origin}${urlObj.pathname}${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
-        console.log('Formatted URL:', formattedUrl);
 
-        // Encode URL to base64
-        const encoded = base64UrlEncode(formattedUrl);
-        // Add lightning: prefix to make it compatible with Lightning wallets
-        const result = 'lightning:LNURL' + encoded.toLowerCase();
-        console.log('Encoded LNURL:', result);
+        // Convert URL to UTF-8 bytes
+        const data = new TextEncoder().encode(url.toLowerCase());
+
+        // Convert to base64URL
+        const base64 = base64UrlEncode(data);
+
+        // Format as Lightning LNURL
+        const lnurl = 'LNURL' + base64;
+        console.log('LNURL encoded:', lnurl);
+
+        // Add lightning: prefix for wallet compatibility
+        const result = 'lightning:' + lnurl;
+        console.log('Final encoded URL:', result);
+
         return result;
     } catch (error) {
         console.error('Error in encodeLNURL:', error);
@@ -470,13 +469,13 @@ async function updateQRCode(amount = null) {
         const qrDiv = document.getElementById('qrcode');
         qrDiv.innerHTML = '';
 
-        // Generate QR code with proper settings
-        const qr = qrcode(0, 'L');
+        // Generate QR code with optimal settings for Lightning wallets
+        const qr = qrcode(10, 'M'); // Version 10 with medium error correction
         qr.addData(encodedLNURL);
         qr.make();
 
-        // Create QR code image
-        const qrImage = qr.createImgTag(4);
+        // Create QR code image with proper size and margin
+        const qrImage = qr.createImgTag(5, 16); // Cell size 5, margin 16
         qrDiv.innerHTML = qrImage;
 
         // Update lightning address display
