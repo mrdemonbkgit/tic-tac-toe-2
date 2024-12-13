@@ -71,12 +71,24 @@
     </footer>
 
     <script>
-        // Wait for QR code library to load before loading main script
-        window.addEventListener('load', function() {
-            const script = document.createElement('script');
-            script.src = 'script.js';
-            document.body.appendChild(script);
-        });
+        // Initialize QR code and bech32 libraries before loading main script
+        function loadMainScript() {
+            if (typeof qrcode === 'function') {
+                const script = document.createElement('script');
+                script.src = 'script.js';
+                script.onload = function() {
+                    // Initialize bech32 after script loads
+                    if (typeof initializeBech32 === 'function') {
+                        initializeBech32();
+                    }
+                };
+                document.body.appendChild(script);
+            } else {
+                // Retry if QR code library isn't loaded yet
+                setTimeout(loadMainScript, 100);
+            }
+        }
+        window.addEventListener('load', loadMainScript);
     </script>
 </body>
 </html>

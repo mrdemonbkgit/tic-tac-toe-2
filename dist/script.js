@@ -300,34 +300,45 @@ async function fetchLNURLData(endpoint) {
     }
 }
 
-function encodeLNURL(url) {
+async function encodeLNURL(url) {
     try {
         console.log('Encoding URL:', url);
 
-        // Convert string to byte array
-        const data = new TextEncoder().encode(url.toLowerCase());
+        // URL encode the parameters properly
+        const encodedUrl = encodeURI(url);
 
-        // Convert to 5-bit array
+        // Convert URL to bytes using TextEncoder
+        const encoder = new TextEncoder();
+        const urlBytes = encoder.encode(encodedUrl);
+
+        // Convert to 5-bit words using proper bech32 encoding
         const words = [];
-        for (let i = 0; i < data.length; ++i) {
-            const b = data[i];
-            for (let j = 0; j < 8; j += 5) {
-                words.push((b >> (8 - (j + 5))) & 31);
+        for (let i = 0; i < urlBytes.length; i++) {
+            const byte = urlBytes[i];
+            words.push((byte >> 3) & 31);
+            words.push(((byte & 7) << 2) | ((i + 1 < urlBytes.length ? urlBytes[i + 1] : 0) >> 6) & 3);
+            if (i + 1 < urlBytes.length) {
+                words.push((urlBytes[i + 1] >> 1) & 31);
+                if (i + 2 < urlBytes.length) {
+                    words.push(((urlBytes[i + 1] & 1) << 4) | ((urlBytes[i + 2] >> 4) & 15));
+                    if (i + 3 < urlBytes.length) {
+                        words.push(((urlBytes[i + 2] & 15) << 1) | ((urlBytes[i + 3] >> 7) & 1));
+                    }
+                }
             }
         }
 
-        // Add checksum
-        const checksum = bech32_polymod([...Array(5).fill(2), ...words, ...Array(6).fill(0)]) ^ 1;
-        for (let i = 0; i < 6; ++i) {
-            words.push((checksum >> (5 * (5 - i))) & 31);
+        // Convert to bech32 string using standard charset
+        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        let lnurl = '';
+        for (const word of words) {
+            lnurl += CHARSET.charAt(word & 31);
         }
 
-        // Encode to bech32
-        const result = 'lnurl' + words.map(w => CHARSET.charAt(w)).join('');
-        console.log('Successfully encoded LNURL:', result);
-        return result.toUpperCase();
+        console.log('Successfully encoded LNURL:', lnurl);
+        return 'LNURL' + lnurl;
     } catch (error) {
-        console.error('LNURL encoding error:', error);
+        console.error('Error encoding LNURL:', error);
         throw error;
     }
 }
@@ -374,21 +385,22 @@ async function updateQRCode(amount = null) {
         const lnurlString = `lightning:${encodedLNURL.toLowerCase()}`;
         console.log('Final LNURL string:', lnurlString);
 
-        // Clear previous QR code and generate new one
+        // Clear previous QR code
         const qrContainer = document.getElementById('qrcode');
         qrContainer.innerHTML = '';
 
-        // Create QR code with version 40 for maximum capacity and proper error correction
-        const qr = qrcode(40, 'M');
+        // Create QR code with proper error correction
+        const qr = qrcode(0, 'M');
         qr.addData(lnurlString);
         qr.make();
 
-        // Create canvas element for PNG conversion
+        // Create canvas for PNG generation
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         const cellSize = 5;
         const margin = 20;
-        const size = qr.getModuleCount() * cellSize + 2 * margin;
+        const moduleCount = qr.getModuleCount();
+        const size = moduleCount * cellSize + 2 * margin;
 
         canvas.width = size;
         canvas.height = size;
@@ -399,8 +411,8 @@ async function updateQRCode(amount = null) {
 
         // Draw QR code
         ctx.fillStyle = '#000000';
-        for (let row = 0; row < qr.getModuleCount(); row++) {
-            for (let col = 0; col < qr.getModuleCount(); col++) {
+        for (let row = 0; row < moduleCount; row++) {
+            for (let col = 0; col < moduleCount; col++) {
                 if (qr.isDark(row, col)) {
                     ctx.fillRect(
                         col * cellSize + margin,
@@ -412,8 +424,8 @@ async function updateQRCode(amount = null) {
             }
         }
 
-        // Convert canvas to image
-        const qrImage = document.createElement('img');
+        // Create and append image
+        const qrImage = new Image();
         qrImage.src = canvas.toDataURL('image/png');
         qrImage.style.width = '250px';
         qrImage.style.height = '250px';
