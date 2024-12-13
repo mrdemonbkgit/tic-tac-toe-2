@@ -269,18 +269,12 @@ async function fetchLNURLData(endpoint) {
     }
 }
 
-async function encodeLNURL(url) {
+function encodeLNURL(url) {
     try {
         console.log('Encoding URL:', url);
-        // Wait for bech32 library to be available (up to 5 attempts)
-        let attempts = 0;
-        while (!window.bech32 || typeof window.bech32.toWords !== 'function') {
-            if (attempts >= 5) {
-                throw new Error('Bech32 library not available after multiple attempts');
-            }
-            attempts++;
-            // Wait 100ms between attempts
-            await new Promise(resolve => setTimeout(resolve, 100));
+        // Verify bech32 is initialized
+        if (!window.bech32Initialized) {
+            throw new Error('Bech32 library not initialized');
         }
 
         const encoder = new TextEncoder();
