@@ -17,6 +17,24 @@ const winningConditions = [
     [2, 4, 6]
 ];
 
+// Bech32 implementation
+const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+
+function bech32_polymod(values) {
+    let chk = 1;
+    for (let p = 0; p < values.length; ++p) {
+        const top = chk >> 25;
+        chk = (chk & 0x1ffffff) << 5 ^ values[p];
+        for (let i = 0; i < 5; ++i) {
+            if ((top >> i) & 1) {
+                chk ^= GENERATOR[i];
+            }
+        }
+    }
+    return chk;
+}
+
 document.getElementById('gameMode').addEventListener('change', function(e) {
     gameMode = e.target.value;
     const aiDifficultyControl = document.getElementById('aiDifficultyControl');
@@ -272,16 +290,29 @@ async function fetchLNURLData(endpoint) {
 function encodeLNURL(url) {
     try {
         console.log('Encoding URL:', url);
-        // Verify bech32 is initialized
-        if (!window.bech32Initialized) {
-            throw new Error('Bech32 library not initialized');
+
+        // Convert string to byte array
+        const data = new TextEncoder().encode(url.toLowerCase());
+
+        // Convert to 5-bit array
+        const words = [];
+        for (let i = 0; i < data.length; ++i) {
+            const b = data[i];
+            for (let j = 0; j < 8; j += 5) {
+                words.push((b >> (8 - (j + 5))) & 31);
+            }
         }
 
-        const encoder = new TextEncoder();
-        const words = window.bech32.toWords(encoder.encode(url.toLowerCase()));
-        const encoded = window.bech32.encode('lnurl', words, 1023);
-        console.log('Successfully encoded LNURL:', encoded);
-        return encoded.toUpperCase();
+        // Add checksum
+        const checksum = bech32_polymod([...Array(5).fill(2), ...words, ...Array(6).fill(0)]) ^ 1;
+        for (let i = 0; i < 6; ++i) {
+            words.push((checksum >> (5 * (5 - i))) & 31);
+        }
+
+        // Encode to bech32
+        const result = 'lnurl' + words.map(w => CHARSET.charAt(w)).join('');
+        console.log('Successfully encoded LNURL:', result);
+        return result.toUpperCase();
     } catch (error) {
         console.error('LNURL encoding error:', error);
         throw error;

@@ -6,43 +6,6 @@
     <title>Tic-Tac-Toe Game - built by Devin</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://unpkg.com/bech32@2.0.0/dist/index.js"></script>
-    <script>
-        // Initialize bech32 library synchronously
-        function initializeBech32() {
-            try {
-                // Check if bech32 is available in any form
-                if (typeof bech32 !== 'undefined') {
-                    window.bech32 = bech32;
-                } else if (typeof window.bech32Converting !== 'undefined') {
-                    window.bech32 = window.bech32Converting;
-                } else if (typeof window.bech32 !== 'undefined') {
-                    // Already assigned to window
-                } else {
-                    throw new Error('Bech32 library not found in any expected location');
-                }
-
-                // Verify the required functions exist
-                if (typeof window.bech32.toWords !== 'function') {
-                    throw new Error('Bech32 library missing required functions');
-                }
-
-                window.bech32Initialized = true;
-                console.log('Bech32 library initialized successfully');
-                return true;
-            } catch (error) {
-                console.error('Failed to initialize bech32 library:', error);
-                window.bech32Initialized = false;
-                return false;
-            }
-        }
-
-        // Try to initialize immediately
-        if (!initializeBech32()) {
-            // If initial attempt fails, try again after a short delay
-            setTimeout(initializeBech32, 500);
-        }
-    </script>
 </head>
 <body>
     <div class="game-container">
@@ -108,13 +71,58 @@
     </footer>
 
     <script>
+        // Bech32 implementation
+        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+
+        function bech32_polymod(values) {
+            let chk = 1;
+            for (let p = 0; p < values.length; ++p) {
+                const top = chk >> 25;
+                chk = (chk & 0x1ffffff) << 5 ^ values[p];
+                for (let i = 0; i < 5; ++i) {
+                    if ((top >> i) & 1) {
+                        chk ^= GENERATOR[i];
+                    }
+                }
+            }
+            return chk;
+        }
+
+        function encodeLNURL(url) {
+            try {
+                console.log('Encoding URL:', url);
+
+                // Convert string to byte array
+                const data = new TextEncoder().encode(url.toLowerCase());
+
+                // Convert to 5-bit array
+                const words = [];
+                for (let i = 0; i < data.length; ++i) {
+                    const b = data[i];
+                    for (let j = 0; j < 8; j += 5) {
+                        words.push((b >> (8 - (j + 5))) & 31);
+                    }
+                }
+
+                // Add checksum
+                const checksum = bech32_polymod([...Array(5).fill(2), ...words, ...Array(6).fill(0)]) ^ 1;
+                for (let i = 0; i < 6; ++i) {
+                    words.push((checksum >> (5 * (5 - i))) & 31);
+                }
+
+                // Encode to bech32
+                const result = 'lnurl' + words.map(w => CHARSET.charAt(w)).join('');
+                console.log('Successfully encoded LNURL:', result);
+                return result.toUpperCase();
+            } catch (error) {
+                console.error('LNURL encoding error:', error);
+                throw error;
+            }
+        }
+
         // Check bech32 initialization before loading main script
         function loadMainScript() {
-            if (!window.bech32Initialized) {
-                console.error('Cannot load main script: bech32 library not initialized');
-                document.body.innerHTML = '<div style="color: red; padding: 20px;">Error: Failed to initialize required libraries. Please refresh the page or contact support.</div>';
-                return;
-            }
             const script = document.createElement('script');
             script.src = 'script.js';
             document.body.appendChild(script);
