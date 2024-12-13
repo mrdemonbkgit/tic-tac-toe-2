@@ -321,8 +321,28 @@ async function fetchLNURLData(endpoint) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        console.log('LNURL data:', data);
-        return data;
+
+        // Validate required fields
+        if (!data.callback || !data.maxSendable || !data.minSendable || !data.metadata) {
+            throw new Error('Invalid LNURL-pay data: missing required fields');
+        }
+
+        // Verify metadata format
+        if (!Array.isArray(data.metadata) || !data.metadata.length) {
+            throw new Error('Invalid LNURL-pay metadata format');
+        }
+
+        // Calculate metadata hash
+        const metadataString = JSON.stringify(data.metadata);
+        const metadataBytes = new TextEncoder().encode(metadataString);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', metadataBytes);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+        return {
+            ...data,
+            metadataHash: hashHex
+        };
     } catch (error) {
         console.error('Error fetching LNURL data:', error);
         throw error;
@@ -362,28 +382,34 @@ async function verifyMetadataHash(metadata, invoice) {
     }
 }
 
-async function encodeLNURL(url) {
+async function verifyMetadataHash(metadata, invoice) {
     try {
-        console.log('Encoding URL:', url);
+        // Convert metadata string to UTF-8 bytes
+        const metadataString = JSON.stringify(metadata);
+        const metadataBytes = new TextEncoder().encode(metadataString);
 
-        // Convert URL to UTF-8 bytes using TextEncoder
-        const encoder = new TextEncoder();
-        const bytes = encoder.encode(url.toLowerCase());
-        console.log('URL bytes:', bytes);
+        // Calculate SHA256 hash
+        const hashBuffer = await crypto.subtle.digest('SHA-256', metadataBytes);
+        const hashHex = Array.from(new Uint8Array(hashBuffer))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
 
-        // Convert to 5-bit words using our bech32 implementation
-        const words = bech32.toWords(Array.from(bytes));
-        console.log('Words:', words);
+        // Extract description_hash from invoice
+        const descHashMatch = invoice.match(/description_hash=([0-9a-f]{64})/i);
+        if (!descHashMatch) {
+            throw new Error('Invoice missing description_hash');
+        }
 
-        // Encode with proper hrp (human readable part)
-        const encoded = bech32.encode('lnurl', words);
-        console.log('Encoded LNURL:', encoded);
-
-        // Return uppercase as per spec
-        return encoded.toUpperCase();
+        const verified = hashHex === descHashMatch[1].toLowerCase();
+        if (!verified) {
+            console.error('Metadata hash verification failed');
+            console.error('Expected:', descHashMatch[1].toLowerCase());
+            console.error('Got:', hashHex);
+        }
+        return verified;
     } catch (error) {
-        console.error('Error in encodeLNURL:', error);
-        throw new Error('Failed to encode LNURL: ' + error.message);
+        console.error('Error verifying metadata hash:', error);
+        throw error;
     }
 }
 
@@ -422,6 +448,19 @@ async function updateQRCode(amount = null) {
             paymentUrl = callbackUrl.toString();
         }
         console.log('Payment URL:', paymentUrl);
+
+        // Fetch invoice data from callback URL
+        const invoiceResponse = await fetch(paymentUrl);
+        if (!invoiceResponse.ok) {
+            throw new Error(`Failed to fetch invoice: ${invoiceResponse.status}`);
+        }
+        const invoiceData = await invoiceResponse.json();
+        console.log('Invoice data:', invoiceData);
+
+        // Verify metadata hash
+        if (!(await verifyMetadataHash(lnurlData.metadata, invoiceData.pr))) {
+            throw new Error('Invoice metadata verification failed');
+        }
 
         // Generate LNURL
         const encodedLNURL = encodeLNURL(paymentUrl);

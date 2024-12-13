@@ -79,51 +79,67 @@ function getLNURLEndpoint(address) {
 
 async function fetchLNURLData(endpoint) {
     try {
-        console.log('Fetching LNURL data from:', endpoint);
         const response = await fetch(endpoint);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        console.log('LNURL data received:', data);
-        if (!data.callback) {
-            throw new Error('Invalid LNURL response: missing callback URL');
+
+        // Validate required fields
+        if (!data.callback || !data.maxSendable || !data.minSendable || !data.metadata) {
+            throw new Error('Invalid LNURL-pay data: missing required fields');
         }
-        return data;
+
+        // Verify metadata format
+        if (!Array.isArray(data.metadata) || !data.metadata.length) {
+            throw new Error('Invalid LNURL-pay metadata format');
+        }
+
+        // Calculate metadata hash
+        const metadataString = JSON.stringify(data.metadata);
+        const metadataBytes = new TextEncoder().encode(metadataString);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', metadataBytes);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+        return {
+            ...data,
+            metadataHash: hashHex
+        };
     } catch (error) {
-        console.error('LNURL data fetch error:', error);
-        throw new Error(`Failed to fetch LNURL data: ${error.message}`);
+        console.error('Error fetching LNURL data:', error);
+        throw error;
     }
 }
 
-function encodeLNURL(url) {
+async function verifyMetadataHash(metadata, invoice) {
     try {
-        console.log('Encoding URL:', url);
+        // Convert metadata string to UTF-8 bytes
+        const metadataString = JSON.stringify(metadata);
+        const metadataBytes = new TextEncoder().encode(metadataString);
 
-        // Convert string to byte array
-        const data = new TextEncoder().encode(url.toLowerCase());
+        // Calculate SHA256 hash
+        const hashBuffer = await crypto.subtle.digest('SHA-256', metadataBytes);
+        const hashHex = Array.from(new Uint8Array(hashBuffer))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
 
-        // Convert to 5-bit array
-        const words = [];
-        for (let i = 0; i < data.length; ++i) {
-            const b = data[i];
-            for (let j = 0; j < 8; j += 5) {
-                words.push((b >> (8 - (j + 5))) & 31);
-            }
+        // Extract description_hash from invoice
+        const descHashMatch = invoice.match(/description_hash=([0-9a-f]{64})/i);
+        if (!descHashMatch) {
+            throw new Error('Invoice missing description_hash');
         }
 
-        // Add checksum
-        const checksum = bech32_polymod([...Array(5).fill(2), ...words, ...Array(6).fill(0)]) ^ 1;
-        for (let i = 0; i < 6; ++i) {
-            words.push((checksum >> (5 * (5 - i))) & 31);
+        const verified = hashHex === descHashMatch[1].toLowerCase();
+        if (!verified) {
+            console.error('Metadata hash verification failed');
+            console.error('Expected:', descHashMatch[1].toLowerCase());
+            console.error('Got:', hashHex);
+            throw new Error('Metadata hash verification failed');
         }
-
-        // Encode to bech32
-        const result = 'lnurl' + words.map(w => CHARSET.charAt(w)).join('');
-        console.log('Successfully encoded LNURL:', result);
-        return result.toUpperCase();
+        return verified;
     } catch (error) {
-        console.error('LNURL encoding error:', error);
+        console.error('Error verifying metadata hash:', error);
         throw error;
     }
 }
@@ -163,6 +179,19 @@ async function updateQRCode(amount = null) {
             paymentUrl = callbackUrl.toString();
         }
         console.log('Payment URL:', paymentUrl);
+
+        // Fetch invoice data from callback URL
+        const invoiceResponse = await fetch(paymentUrl);
+        if (!invoiceResponse.ok) {
+            throw new Error(`Failed to fetch invoice: ${invoiceResponse.status}`);
+        }
+        const invoiceData = await invoiceResponse.json();
+        console.log('Invoice data:', invoiceData);
+
+        // Verify metadata hash
+        if (!(await verifyMetadataHash(lnurlData.metadata, invoiceData.pr))) {
+            throw new Error('Invoice metadata verification failed');
+        }
 
         // Generate LNURL
         const encodedLNURL = encodeLNURL(paymentUrl);
