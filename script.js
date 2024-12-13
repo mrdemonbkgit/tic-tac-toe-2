@@ -345,11 +345,10 @@ async function updateQRCode(amount = null) {
 
         // Generate QR code with lightning: prefix
         document.getElementById('qrcode').innerHTML = '';
-        new QRCode(document.getElementById('qrcode'), {
-            text: lnurlString,
-            width: 256,
-            height: 256
-        });
+        const qr = qrcode(0, 'M');
+        qr.addData(lnurlString);
+        qr.make();
+        document.getElementById('qrcode').innerHTML = qr.createImgTag(5);
     } catch (error) {
         console.error('Error generating QR code:', error);
         alert('Error generating Lightning payment QR code. Please try again.');
