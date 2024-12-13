@@ -6,19 +6,41 @@
     <title>Tic-Tac-Toe Game - built by Devin</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script src="https://bundle.run/bech32@2.0.0"></script>
+    <script src="https://unpkg.com/bech32@2.0.0/dist/index.js"></script>
     <script>
         // Initialize bech32 library synchronously
-        try {
-            window.bech32 = window.bech32Converting || window.bech32;
-            if (!window.bech32 || typeof window.bech32.toWords !== 'function') {
-                throw new Error('Bech32 library not properly initialized');
+        function initializeBech32() {
+            try {
+                // Check if bech32 is available in any form
+                if (typeof bech32 !== 'undefined') {
+                    window.bech32 = bech32;
+                } else if (typeof window.bech32Converting !== 'undefined') {
+                    window.bech32 = window.bech32Converting;
+                } else if (typeof window.bech32 !== 'undefined') {
+                    // Already assigned to window
+                } else {
+                    throw new Error('Bech32 library not found in any expected location');
+                }
+
+                // Verify the required functions exist
+                if (typeof window.bech32.toWords !== 'function') {
+                    throw new Error('Bech32 library missing required functions');
+                }
+
+                window.bech32Initialized = true;
+                console.log('Bech32 library initialized successfully');
+                return true;
+            } catch (error) {
+                console.error('Failed to initialize bech32 library:', error);
+                window.bech32Initialized = false;
+                return false;
             }
-            window.bech32Initialized = true;
-            console.log('Bech32 library initialized successfully');
-        } catch (error) {
-            console.error('Failed to initialize bech32 library:', error);
-            window.bech32Initialized = false;
+        }
+
+        // Try to initialize immediately
+        if (!initializeBech32()) {
+            // If initial attempt fails, try again after a short delay
+            setTimeout(initializeBech32, 500);
         }
     </script>
 </head>
@@ -87,14 +109,19 @@
 
     <script>
         // Check bech32 initialization before loading main script
-        if (!window.bech32Initialized) {
-            console.error('Cannot load main script: bech32 library not initialized');
-            document.body.innerHTML = '<div style="color: red; padding: 20px;">Error: Failed to initialize required libraries. Please refresh the page or contact support.</div>';
-        } else {
+        function loadMainScript() {
+            if (!window.bech32Initialized) {
+                console.error('Cannot load main script: bech32 library not initialized');
+                document.body.innerHTML = '<div style="color: red; padding: 20px;">Error: Failed to initialize required libraries. Please refresh the page or contact support.</div>';
+                return;
+            }
             const script = document.createElement('script');
             script.src = 'script.js';
             document.body.appendChild(script);
         }
+
+        // Try to load main script after a short delay to ensure library is initialized
+        setTimeout(loadMainScript, 1000);
     </script>
 </body>
 </html>
