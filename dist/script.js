@@ -17,54 +17,42 @@ const winningConditions = [
     [2, 4, 6]
 ];
 
-// Bech32 implementation
-const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
-const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+// LNURL encoding utilities
+function base64UrlEncode(str) {
+    // Convert string to UTF-8 bytes
+    const bytes = new TextEncoder().encode(str);
+    // Convert bytes to base64 and make URL safe
+    return btoa(String.fromCharCode(...bytes))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '');
+}
 
-const bech32 = {
-    toWords(bytes) {
-        const ret = [];
-        let acc = 0;
-        let bits = 0;
-        const maxv = (1 << 5) - 1;
-
-        for (let p = 0; p < bytes.length; ++p) {
-            acc = (acc << 8) | bytes[p];
-            bits += 8;
-            while (bits >= 5) {
-                bits -= 5;
-                ret.push((acc >> bits) & maxv);
-            }
+function encodeLNURL(url) {
+    try {
+        console.log('Encoding URL:', url);
+        // Ensure URL is properly formatted
+        const urlObj = new URL(url);
+        // Convert all URL parameters to lowercase as per spec
+        const searchParams = new URLSearchParams();
+        for (const [key, value] of urlObj.searchParams) {
+            searchParams.append(key.toLowerCase(), value);
         }
+        // Reconstruct URL with sorted parameters
+        const formattedUrl = `${urlObj.origin}${urlObj.pathname}${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+        console.log('Formatted URL:', formattedUrl);
 
-        if (bits > 0) {
-            ret.push((acc << (5 - bits)) & maxv);
-        }
-
-        return ret;
-    },
-
-    encode(hrp, data) {
-        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
-        const combined = data.map(d => {
-            if (d >> 5 !== 0) {
-                throw new Error(`Invalid data value: ${d}`);
-            }
-            return d;
-        });
-
-        let checksum = bech32_polymod([...hrp.split('').map(c => c.charCodeAt(0) >> 5),
-            0,
-            ...hrp.split('').map(c => c.charCodeAt(0) & 31),
-            ...combined]);
-
-        // Convert to 5-bit groups and add checksum
-        const words = [...combined, ...Array(6).fill(0).map((_, i) => (checksum >> (5 * (5 - i))) & 31)];
-
-        // Encode to base32
-        return `${hrp}1${words.map(i => CHARSET.charAt(i)).join('')}`;
+        // Encode URL to base64
+        const encoded = base64UrlEncode(formattedUrl);
+        // Add lightning: prefix to make it compatible with Lightning wallets
+        const result = 'lightning:LNURL' + encoded.toLowerCase();
+        console.log('Encoded LNURL:', result);
+        return result;
+    } catch (error) {
+        console.error('Error in encodeLNURL:', error);
+        throw error;
     }
-};
+}
 
 function bech32_polymod(values) {
     let chk = 1;
@@ -308,9 +296,22 @@ document.querySelectorAll('.cell').forEach(cell => cell.addEventListener('click'
 document.querySelector('#restart').addEventListener('click', handleRestartGame);
 
 // LNURL utilities
-function getLNURLEndpoint() {
-    const username = 'steelybowling85';
-    return `https://walletofsatoshi.com/.well-known/lnurlp/${username}`;
+function getLNURLEndpoint(address) {
+    try {
+        if (!address || !address.includes('@')) {
+            throw new Error('Invalid Lightning address format');
+        }
+        const [username, domain] = address.split('@');
+        if (!username || !domain) {
+            throw new Error('Invalid Lightning address: missing username or domain');
+        }
+        const endpoint = `https://${domain}/.well-known/lnurlp/${username}`;
+        console.log('LNURL endpoint:', endpoint);
+        return endpoint;
+    } catch (error) {
+        console.error('Error in getLNURLEndpoint:', error);
+        throw error;
+    }
 }
 
 async function fetchLNURLData(endpoint) {
@@ -389,54 +390,62 @@ async function encodeLNURL(url) {
 // QR code generation function
 async function updateQRCode(amount = null) {
     try {
-        console.log('Updating QR code with amount:', amount);
-        const qrDiv = document.getElementById('qrcode');
-        qrDiv.innerHTML = ''; // Clear existing QR code
+        const address = 'steelybowling85@walletofsatoshi.com';
+        const baseUrl = getLNURLEndpoint(address);
+        console.log('Base URL:', baseUrl);
 
-        // Get LNURL data
-        const lnurlData = await fetchLNURLData(getLNURLEndpoint());
-        console.log('LNURL data received:', lnurlData);
+        // Fetch LNURL data first to get callback URL
+        const lnurlData = await fetchLNURLData(baseUrl);
+        console.log('LNURL data:', lnurlData);
 
-        // Validate amount if provided
+        if (!lnurlData || !lnurlData.callback) {
+            throw new Error('Invalid LNURL data: missing callback URL');
+        }
+
+        // Validate amount is within allowed range
+        let paymentUrl = lnurlData.callback;
         if (amount !== null) {
-            const amountMsat = amount * 1000; // Convert sats to millisats
-            if (amountMsat < lnurlData.minSendable || amountMsat > lnurlData.maxSendable) {
+            const millisats = parseInt(amount) * 1000;
+            console.log('Amount in millisats:', millisats);
+
+            if (!lnurlData.minSendable || !lnurlData.maxSendable) {
+                throw new Error('Invalid LNURL data: missing sendable limits');
+            }
+
+            if (millisats < lnurlData.minSendable || millisats > lnurlData.maxSendable) {
                 throw new Error(`Amount must be between ${lnurlData.minSendable / 1000} and ${lnurlData.maxSendable / 1000} sats`);
             }
+
+            // Construct callback URL with amount
+            const callbackUrl = new URL(lnurlData.callback);
+            callbackUrl.searchParams.set('amount', millisats.toString());
+            paymentUrl = callbackUrl.toString();
         }
+        console.log('Payment URL:', paymentUrl);
 
-        // Construct the callback URL with amount if provided
-        const callbackUrl = new URL(lnurlData.callback);
-        if (amount !== null) {
-            callbackUrl.searchParams.set('amount', amount * 1000); // Convert to millisats
-        }
+        // Generate LNURL
+        const encodedLNURL = encodeLNURL(paymentUrl);
+        console.log('Encoded LNURL:', encodedLNURL);
 
-        try {
-            // Generate LNURL with optimized encoding
-            const encodedUrl = await encodeLNURL(callbackUrl.toString());
-            console.log('Generated LNURL:', encodedUrl);
+        // Clear existing QR code
+        const qrDiv = document.getElementById('qrcode');
+        qrDiv.innerHTML = '';
 
-            // Create QR code with higher version and error correction
-            if (typeof qrcode !== 'function') {
-                throw new Error('QR code library not initialized');
-            }
+        // Generate QR code with proper settings
+        const qr = qrcode(0, 'L');
+        qr.addData(encodedLNURL);
+        qr.make();
 
-            const qr = qrcode(0, 'L'); // Auto version with low error correction
-            qr.addData(`lightning:${encodedUrl.toUpperCase()}`);
-            qr.make();
+        // Create QR code image
+        const qrImage = qr.createImgTag(4);
+        qrDiv.innerHTML = qrImage;
 
-            // Create optimized QR code image
-            const img = new Image();
-            img.src = qr.createDataURL(4);
-            qrDiv.appendChild(img);
+        // Update lightning address display
+        const lightningAddressDiv = document.getElementById('lightningAddress');
+        lightningAddressDiv.innerHTML = address;
 
-            console.log('QR code generated successfully');
-        } catch (qrError) {
-            console.error('QR code generation error:', qrError);
-            throw new Error(`Failed to generate QR code: ${qrError.message}`);
-        }
     } catch (error) {
-        console.error('Error in updateQRCode:', error);
+        console.error('Error generating QR code:', error);
         const qrDiv = document.getElementById('qrcode');
         qrDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
     }
