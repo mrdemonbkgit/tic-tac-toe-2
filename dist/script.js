@@ -411,35 +411,30 @@ async function updateQRCode(amount = null) {
             callbackUrl.searchParams.set('amount', amount * 1000); // Convert to millisats
         }
 
-        // Verify metadata hash if available
-        if (lnurlData.metadata) {
-            try {
-                const metadataValid = await verifyMetadataHash(lnurlData.metadata, callbackUrl.toString());
-                if (!metadataValid) {
-                    throw new Error('Metadata hash verification failed');
-                }
-                console.log('Metadata hash verified successfully');
-            } catch (error) {
-                console.warn('Metadata hash verification warning:', error.message);
-                // Continue without failing - some wallets might not support metadata hash
+        try {
+            // Generate LNURL with optimized encoding
+            const encodedUrl = await encodeLNURL(callbackUrl.toString());
+            console.log('Generated LNURL:', encodedUrl);
+
+            // Create QR code with higher version and error correction
+            if (typeof qrcode !== 'function') {
+                throw new Error('QR code library not initialized');
             }
+
+            const qr = qrcode(0, 'L'); // Auto version with low error correction
+            qr.addData(`lightning:${encodedUrl.toUpperCase()}`);
+            qr.make();
+
+            // Create optimized QR code image
+            const img = new Image();
+            img.src = qr.createDataURL(4);
+            qrDiv.appendChild(img);
+
+            console.log('QR code generated successfully');
+        } catch (qrError) {
+            console.error('QR code generation error:', qrError);
+            throw new Error(`Failed to generate QR code: ${qrError.message}`);
         }
-
-        // Generate LNURL with optimized encoding
-        const encodedUrl = await encodeLNURL(callbackUrl.toString());
-        console.log('Generated LNURL:', encodedUrl);
-
-        // Create QR code with higher version and error correction
-        const qr = qrcode(10, 'L'); // Version 10 with low error correction for smaller size
-        qr.addData(`lightning:${encodedUrl}`);
-        qr.make();
-
-        // Create optimized QR code image
-        const img = new Image();
-        img.src = qr.createDataURL(4); // Smaller cell size for compact QR
-        qrDiv.appendChild(img);
-
-        console.log('QR code generated successfully');
     } catch (error) {
         console.error('Error in updateQRCode:', error);
         const qrDiv = document.getElementById('qrcode');
