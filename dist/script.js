@@ -21,7 +21,20 @@ const winningConditions = [
 const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
 const GENERATOR = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
 
+// Initialize bech32 functionality
+let bech32Initialized = false;
+
+function initializeBech32() {
+    if (!CHARSET || !GENERATOR) {
+        throw new Error('Failed to initialize bech32 library: missing constants');
+    }
+    bech32Initialized = true;
+}
+
 function bech32_polymod(values) {
+    if (!bech32Initialized) {
+        initializeBech32();
+    }
     let chk = 1;
     for (let p = 0; p < values.length; ++p) {
         const top = chk >> 25;
@@ -321,9 +334,14 @@ function encodeLNURL(url) {
 
 // QR code generation function
 async function updateQRCode(amount = null) {
-    const address = 'steelybowling85@walletofsatoshi.com';
-    const endpoint = getLNURLEndpoint(address);
     try {
+        // Check if QR code library is loaded
+        if (typeof qrcode !== 'function') {
+            throw new Error('QR code library not loaded');
+        }
+
+        const address = 'steelybowling85@walletofsatoshi.com';
+        const endpoint = getLNURLEndpoint(address);
         const lnurlData = await fetchLNURLData(endpoint);
         const callback = lnurlData.callback;
 
@@ -339,14 +357,19 @@ async function updateQRCode(amount = null) {
             finalUrl = endpoint;
         }
 
+        // Initialize bech32 if not already initialized
+        if (!bech32Initialized) {
+            initializeBech32();
+        }
+
         // Generate LNURL for the appropriate URL
         const encodedLNURL = await encodeLNURL(finalUrl);
         const lnurlString = `lightning:${encodedLNURL}`;
 
         // Generate QR code with lightning: prefix
         document.getElementById('qrcode').innerHTML = '';
-        const qr = qrcode(0, 'L');  // Changed to 'L' for better error correction
-        qr.addData(lnurlString, 'Byte');  // Added mode specification
+        const qr = qrcode(0, 'L');
+        qr.addData(lnurlString, 'Byte');
         qr.make();
         const qrImage = qr.createImgTag(5);
         document.getElementById('qrcode').innerHTML = qrImage;
