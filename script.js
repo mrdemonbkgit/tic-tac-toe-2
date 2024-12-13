@@ -378,14 +378,14 @@ async function updateQRCode(amount = null) {
         const qrContainer = document.getElementById('qrcode');
         qrContainer.innerHTML = '';
 
-        // Create QR code with proper size and error correction
-        const qr = qrcode(4, 'M');
+        // Create QR code with version 40 for maximum capacity
+        const qr = qrcode(40, 'M');
         qr.addData(lnurlString);
         qr.make();
 
         // Create QR code image with proper styling
         const qrImage = document.createElement('img');
-        qrImage.src = qr.createDataURL(10);
+        qrImage.src = qr.createDataURL(4);
         qrImage.style.width = '200px';
         qrImage.style.height = '200px';
         qrContainer.appendChild(qrImage);
