@@ -383,12 +383,38 @@ async function updateQRCode(amount = null) {
         qr.addData(lnurlString);
         qr.make();
 
-        // Create QR code image with proper data URL formatting
+        // Create canvas element for PNG conversion
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const cellSize = 5;
+        const margin = 20;
+        const size = qr.getModuleCount() * cellSize + 2 * margin;
+
+        canvas.width = size;
+        canvas.height = size;
+
+        // Fill background
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, size, size);
+
+        // Draw QR code
+        ctx.fillStyle = '#000000';
+        for (let row = 0; row < qr.getModuleCount(); row++) {
+            for (let col = 0; col < qr.getModuleCount(); col++) {
+                if (qr.isDark(row, col)) {
+                    ctx.fillRect(
+                        col * cellSize + margin,
+                        row * cellSize + margin,
+                        cellSize,
+                        cellSize
+                    );
+                }
+            }
+        }
+
+        // Convert canvas to image
         const qrImage = document.createElement('img');
-        const dataUrl = qr.createDataURL(2);
-        // Ensure proper data URL format with correct MIME type and base64 encoding
-        const base64Data = dataUrl.split(',')[1];
-        qrImage.src = `data:image/png;base64,${base64Data}`;
+        qrImage.src = canvas.toDataURL('image/png');
         qrImage.style.width = '250px';
         qrImage.style.height = '250px';
         qrContainer.appendChild(qrImage);
