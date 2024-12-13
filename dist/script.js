@@ -353,32 +353,33 @@ async function updateQRCode(amount = null) {
         const lnurlData = await fetchLNURLData(baseUrl);
         console.log('LNURL data:', lnurlData);
 
-        // Construct payment URL
+        // Construct payment URL with proper callback handling
         let paymentUrl;
         if (amount) {
             const millisats = parseInt(amount) * 1000;
             if (millisats < lnurlData.minSendable || millisats > lnurlData.maxSendable) {
                 throw new Error(`Amount must be between ${lnurlData.minSendable / 1000} and ${lnurlData.maxSendable / 1000} sats`);
             }
+            // Use callback URL for preset amounts
             paymentUrl = `${lnurlData.callback}?amount=${millisats}`;
+            console.log('Using callback URL with amount:', paymentUrl);
         } else {
+            // Use base URL for initial QR code
             paymentUrl = baseUrl;
+            console.log('Using base URL:', paymentUrl);
         }
 
-        console.log('Payment URL:', paymentUrl);
-
-        // Generate LNURL
+        // Generate LNURL with proper encoding
         const encodedLNURL = await encodeLNURL(paymentUrl);
         const lnurlString = `lightning:${encodedLNURL.toLowerCase()}`;
         console.log('Final LNURL string:', lnurlString);
 
-        // Generate QR code
+        // Clear previous QR code and generate new one
         document.getElementById('qrcode').innerHTML = '';
         const qr = qrcode(0, 'L');
-        qr.addData(lnurlString, 'Byte');
+        qr.addData(lnurlString);
         qr.make();
-        const qrImage = qr.createImgTag(5);
-        document.getElementById('qrcode').innerHTML = qrImage;
+        document.getElementById('qrcode').innerHTML = qr.createImgTag(5);
     } catch (error) {
         console.error('Error generating QR code:', error);
         alert('Error generating Lightning payment QR code. Please try again.');
