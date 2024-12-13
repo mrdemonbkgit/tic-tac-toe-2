@@ -377,14 +377,19 @@ async function updateQRCode(amount = null) {
         // Clear previous QR code and generate new one
         const qrContainer = document.getElementById('qrcode');
         qrContainer.innerHTML = '';
-        const qr = qrcode(0, 'L');
+
+        // Create QR code with proper size and error correction
+        const qr = qrcode(4, 'M');
         qr.addData(lnurlString);
         qr.make();
 
-        // Create QR code image with proper data URL
-        const qrImage = new Image();
-        qrImage.src = qr.createDataURL(5);
+        // Create QR code image with proper styling
+        const qrImage = document.createElement('img');
+        qrImage.src = qr.createDataURL(10);
+        qrImage.style.width = '200px';
+        qrImage.style.height = '200px';
         qrContainer.appendChild(qrImage);
+
     } catch (error) {
         console.error('Error generating QR code:', error);
         alert('Error generating Lightning payment QR code. Please try again.');

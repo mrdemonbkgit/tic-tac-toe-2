@@ -375,11 +375,16 @@ async function updateQRCode(amount = null) {
         console.log('Final LNURL string:', lnurlString);
 
         // Clear previous QR code and generate new one
-        document.getElementById('qrcode').innerHTML = '';
+        const qrContainer = document.getElementById('qrcode');
+        qrContainer.innerHTML = '';
         const qr = qrcode(0, 'L');
         qr.addData(lnurlString);
         qr.make();
-        document.getElementById('qrcode').innerHTML = qr.createImgTag(5);
+
+        // Create QR code image with proper data URL
+        const qrImage = new Image();
+        qrImage.src = qr.createDataURL(5);
+        qrContainer.appendChild(qrImage);
     } catch (error) {
         console.error('Error generating QR code:', error);
         alert('Error generating Lightning payment QR code. Please try again.');
