@@ -27,7 +27,6 @@ const bech32 = {
         let acc = 0;
         let bits = 0;
         const maxv = (1 << 5) - 1;
-        const max_acc = (1 << (8 - 5)) - 1;
 
         for (let p = 0; p < bytes.length; ++p) {
             acc = (acc << 8) | bytes[p];
@@ -45,22 +44,25 @@ const bech32 = {
         return ret;
     },
 
-    encode(hrp, data, limit) {
-        const combined = [];
-        let check = 1;
+    encode(hrp, data) {
+        const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+        const combined = data.map(d => {
+            if (d >> 5 !== 0) {
+                throw new Error(`Invalid data value: ${d}`);
+            }
+            return d;
+        });
 
-        // Convert HRP to bytes
-        const hrpBytes = Array.from(hrp).map(c => c.charCodeAt(0) & 0x1f);
+        let checksum = bech32_polymod([...hrp.split('').map(c => c.charCodeAt(0) >> 5),
+            0,
+            ...hrp.split('').map(c => c.charCodeAt(0) & 31),
+            ...combined]);
 
-        // Calculate checksum
-        check = bech32_polymod([...hrpBytes, 0, ...data]);
-        check ^= 1;
-
-        // Convert to 5-bit groups
-        const words = [...data, ...Array(6).fill(0).map((_, i) => (check >> (5 * (5 - i))) & 31)];
+        // Convert to 5-bit groups and add checksum
+        const words = [...combined, ...Array(6).fill(0).map((_, i) => (checksum >> (5 * (5 - i))) & 31)];
 
         // Encode to base32
-        return hrp + '1' + words.map(i => CHARSET.charAt(i)).join('');
+        return `${hrp}1${words.map(i => CHARSET.charAt(i)).join('')}`;
     }
 };
 
@@ -326,25 +328,61 @@ async function fetchLNURLData(endpoint) {
     }
 }
 
+// Metadata hash verification function
+async function verifyMetadataHash(metadata, invoice) {
+    try {
+        console.log('Verifying metadata hash for:', metadata);
+
+        // Convert metadata string to UTF-8 bytes
+        const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
+
+        // Calculate SHA256 hash
+        const hash = await crypto.subtle.digest('SHA-256', metadataBytes);
+
+        // Convert hash to hex string
+        const hashHex = Array.from(new Uint8Array(hash))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+
+        console.log('Calculated metadata hash:', hashHex);
+
+        // Extract description_hash from invoice
+        const descHashMatch = invoice.match(/description_hash=([0-9a-f]{64})/i);
+        if (!descHashMatch) {
+            throw new Error('Invoice missing description_hash');
+        }
+
+        const matches = hashHex === descHashMatch[1].toLowerCase();
+        console.log('Hash verification result:', matches);
+        return matches;
+    } catch (error) {
+        console.error('Error verifying metadata hash:', error);
+        throw new Error('Failed to verify metadata hash: ' + error.message);
+    }
+}
+
 async function encodeLNURL(url) {
     try {
         console.log('Encoding URL:', url);
 
-        // Convert URL to bytes
-        const bytes = Array.from(url).map(char => char.charCodeAt(0));
+        // Convert URL to UTF-8 bytes using TextEncoder
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(url.toLowerCase());
         console.log('URL bytes:', bytes);
 
-        // Use our custom bech32 implementation
-        const words = bech32.toWords(bytes);
+        // Convert to 5-bit words using our bech32 implementation
+        const words = bech32.toWords(Array.from(bytes));
         console.log('Words:', words);
 
+        // Encode with proper hrp (human readable part)
         const encoded = bech32.encode('lnurl', words);
         console.log('Encoded LNURL:', encoded);
 
+        // Return uppercase as per spec
         return encoded.toUpperCase();
     } catch (error) {
         console.error('Error in encodeLNURL:', error);
-        throw error;
+        throw new Error('Failed to encode LNURL: ' + error.message);
     }
 }
 
@@ -355,13 +393,9 @@ async function updateQRCode(amount = null) {
         const qrDiv = document.getElementById('qrcode');
         qrDiv.innerHTML = ''; // Clear existing QR code
 
-        // Get the base LNURL endpoint
-        const endpoint = getLNURLEndpoint();
-        console.log('Base endpoint:', endpoint);
-
-        // Fetch LNURL data
-        const lnurlData = await fetchLNURLData(endpoint);
-        console.log('LNURL data:', lnurlData);
+        // Get LNURL data
+        const lnurlData = await fetchLNURLData(getLNURLEndpoint());
+        console.log('LNURL data received:', lnurlData);
 
         // Validate amount if provided
         if (amount !== null) {
@@ -372,53 +406,62 @@ async function updateQRCode(amount = null) {
         }
 
         // Construct the callback URL with amount if provided
-        let callbackUrl = endpoint;
+        const callbackUrl = new URL(lnurlData.callback);
         if (amount !== null) {
-            callbackUrl += `?amount=${amount * 1000}`; // Convert to millisats
+            callbackUrl.searchParams.set('amount', amount * 1000); // Convert to millisats
         }
 
-        try {
-            // Generate LNURL using our custom bech32 implementation
-            const encodedUrl = await encodeLNURL(callbackUrl);
-            console.log('Generated LNURL:', encodedUrl);
+        // Verify metadata hash if available
+        if (lnurlData.metadata) {
+            try {
+                const metadataValid = await verifyMetadataHash(lnurlData.metadata, callbackUrl.toString());
+                if (!metadataValid) {
+                    throw new Error('Metadata hash verification failed');
+                }
+                console.log('Metadata hash verified successfully');
+            } catch (error) {
+                console.warn('Metadata hash verification warning:', error.message);
+                // Continue without failing - some wallets might not support metadata hash
+            }
+        }
 
-            // Create QR code with higher version and error correction
-            const qr = qrcode(4, 'M');
-            qr.addData(`lightning:${encodedUrl.toLowerCase()}`);
-            qr.make();
+        // Generate LNURL
+        const encodedUrl = await encodeLNURL(callbackUrl.toString());
+        console.log('Generated LNURL:', encodedUrl);
 
-            // Create canvas for QR code
-            const canvas = document.createElement('canvas');
-            const size = 256;
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext('2d');
-            const cellSize = size / qr.getModuleCount();
+        // Create QR code with higher version and error correction
+        const qr = qrcode(4, 'M');
+        qr.addData(`lightning:${encodedUrl}`);
+        qr.make();
 
-            // Draw QR code on canvas
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, size, size);
-            ctx.fillStyle = '#000000';
+        // Create canvas for QR code
+        const canvas = document.createElement('canvas');
+        const size = 256;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const cellSize = size / qr.getModuleCount();
 
-            for (let row = 0; row < qr.getModuleCount(); row++) {
-                for (let col = 0; col < qr.getModuleCount(); col++) {
-                    if (qr.isDark(row, col)) {
-                        ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
-                    }
+        // Draw QR code on canvas
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = '#000000';
+
+        for (let row = 0; row < qr.getModuleCount(); row++) {
+            for (let col = 0; col < qr.getModuleCount(); col++) {
+                if (qr.isDark(row, col)) {
+                    ctx.fillRect(col * cellSize, row * cellSize, cellSize, cellSize);
                 }
             }
-
-            // Convert canvas to image and ensure proper data URL format
-            const img = new Image();
-            const dataUrl = canvas.toDataURL('image/png').replace(/^data:image\/[^;]*/, 'data:image/png');
-            img.src = dataUrl;
-            qrDiv.appendChild(img);
-
-            console.log('QR code generated successfully');
-        } catch (error) {
-            console.error('Error in QR code generation:', error);
-            throw error;
         }
+
+        // Convert canvas to image and ensure proper data URL format
+        const img = new Image();
+        const dataUrl = canvas.toDataURL('image/png').replace(/^data:image\/[^;]*/, 'data:image/png');
+        img.src = dataUrl;
+        qrDiv.appendChild(img);
+
+        console.log('QR code generated successfully');
     } catch (error) {
         console.error('Error in updateQRCode:', error);
         const qrDiv = document.getElementById('qrcode');
@@ -436,15 +479,24 @@ let selectedAmount = null;
 // Handle preset amount selection
 document.querySelectorAll('.preset-btn').forEach(button => {
     button.addEventListener('click', async function() {
-        const amount = this.dataset.amount;
-        selectedAmount = amount;
+        try {
+            const amount = parseInt(this.dataset.amount, 10);
+            if (isNaN(amount)) {
+                throw new Error('Invalid amount');
+            }
+            selectedAmount = amount;
 
-        // Update button styles
-        document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('selected'));
-        this.classList.add('selected');
+            // Update button styles
+            document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('selected'));
+            this.classList.add('selected');
 
-        // Update QR code with amount
-        await updateQRCode(amount);
+            // Update QR code with amount
+            await updateQRCode(amount);
+        } catch (error) {
+            console.error('Error handling preset amount:', error);
+            const qrDiv = document.getElementById('qrcode');
+            qrDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+        }
     });
 });
 
