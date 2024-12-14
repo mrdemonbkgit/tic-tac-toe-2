@@ -42,11 +42,8 @@ function encodeLNURL(url) {
         const lnurl = 'LNURL' + base64;
         console.log('LNURL encoded:', lnurl);
 
-        // Add lightning: prefix for wallet compatibility
-        const result = 'lightning:' + lnurl;
-        console.log('Final encoded URL:', result);
-
-        return result;
+        // Return raw LNURL for QR code, lightning: prefix will be added for clipboard
+        return lnurl;
     } catch (error) {
         console.error('Error in encodeLNURL:', error);
         throw error;
@@ -201,13 +198,20 @@ async function updateQRCode(amount = null) {
         qrDiv.innerHTML = '';
 
         // Generate QR code with optimal settings for Lightning wallets
-        const qr = qrcode(10, 'M'); // Version 10 with medium error correction
-        qr.addData(encodedLNURL);
+        const qr = qrcode(0, 'L'); // Auto version selection with low error correction for better compatibility
+        qr.addData(encodedLNURL, 'Byte'); // Specify Byte mode for better URL handling
         qr.make();
 
-        // Create QR code image with proper size and margin
-        const qrImage = qr.createImgTag(5, 16); // Cell size 5, margin 16
-        qrDiv.innerHTML = qrImage;
+        // Generate SVG instead of GIF
+        const svgString = qr.createSvgTag(4, 0);
+        qrDiv.innerHTML = svgString;
+
+        // Add alt text for accessibility
+        const svgElement = qrDiv.querySelector('svg');
+        if (svgElement) {
+            svgElement.setAttribute('alt', 'Lightning Payment QR Code');
+            svgElement.setAttribute('aria-label', 'Scan this QR code to make a Lightning payment');
+        }
 
         // Update lightning address display
         const lightningAddressDiv = document.getElementById('lightningAddress');

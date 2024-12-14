@@ -42,11 +42,8 @@ function encodeLNURL(url) {
         const lnurl = 'LNURL' + base64;
         console.log('LNURL encoded:', lnurl);
 
-        // Add lightning: prefix for wallet compatibility
-        const result = 'lightning:' + lnurl;
-        console.log('Final encoded URL:', result);
-
-        return result;
+        // Return raw LNURL for QR code, lightning: prefix will be added for clipboard
+        return lnurl;
     } catch (error) {
         console.error('Error in encodeLNURL:', error);
         throw error;
@@ -320,26 +317,48 @@ async function fetchLNURLData(endpoint) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
+        console.log('Raw LNURL response:', data);
 
         // Validate required fields
         if (!data.callback || !data.maxSendable || !data.minSendable || !data.metadata) {
+            console.error('Missing required fields:', data);
             throw new Error('Invalid LNURL-pay data: missing required fields');
         }
 
-        // Verify metadata format
-        if (!Array.isArray(data.metadata) || !data.metadata.length) {
-            throw new Error('Invalid LNURL-pay metadata format');
+        // Parse metadata string if it's a string
+        let parsedMetadata;
+        try {
+            if (typeof data.metadata === 'string') {
+                parsedMetadata = JSON.parse(data.metadata);
+                console.log('Parsed metadata from string:', parsedMetadata);
+            } else {
+                parsedMetadata = data.metadata;
+                console.log('Using provided metadata array:', parsedMetadata);
+            }
+        } catch (error) {
+            console.error('Error parsing metadata:', error, 'Raw metadata:', data.metadata);
+            throw new Error('Invalid LNURL-pay metadata format: ' + error.message);
         }
 
-        // Calculate metadata hash
-        const metadataString = JSON.stringify(data.metadata);
+        // Verify metadata format
+        if (!Array.isArray(parsedMetadata) || !parsedMetadata.length ||
+            !parsedMetadata.every(item => Array.isArray(item) && item.length === 2)) {
+            console.error('Invalid metadata structure:', parsedMetadata);
+            throw new Error('Invalid LNURL-pay metadata format: must be array of [type, value] pairs');
+        }
+
+        // Calculate metadata hash using parsed metadata
+        const metadataString = JSON.stringify(parsedMetadata);
+        console.log('Metadata string for hash:', metadataString);
         const metadataBytes = new TextEncoder().encode(metadataString);
         const hashBuffer = await crypto.subtle.digest('SHA-256', metadataBytes);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
         const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        console.log('Calculated metadata hash:', hashHex);
 
         return {
             ...data,
+            metadata: parsedMetadata,
             metadataHash: hashHex
         };
     } catch (error) {
@@ -352,27 +371,44 @@ async function fetchLNURLData(endpoint) {
 async function verifyMetadataHash(metadata, invoice) {
     try {
         console.log('Verifying metadata hash for:', metadata);
+        console.log('Invoice:', invoice);
 
-        // Convert metadata string to UTF-8 bytes
-        const metadataBytes = new TextEncoder().encode(JSON.stringify(metadata));
+        // Ensure metadata is properly formatted
+        if (!Array.isArray(metadata) || !metadata.length ||
+            !metadata.every(item => Array.isArray(item) && item.length === 2)) {
+            console.error('Invalid metadata structure:', metadata);
+            throw new Error('Invalid metadata format: must be array of [type, value] pairs');
+        }
 
-        // Calculate SHA256 hash
-        const hash = await crypto.subtle.digest('SHA-256', metadataBytes);
-
-        // Convert hash to hex string
-        const hashHex = Array.from(new Uint8Array(hash))
+        // Calculate metadata hash
+        const metadataString = JSON.stringify(metadata);
+        console.log('Metadata string for hash:', metadataString);
+        const metadataBytes = new TextEncoder().encode(metadataString);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', metadataBytes);
+        const hashHex = Array.from(new Uint8Array(hashBuffer))
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
-
         console.log('Calculated metadata hash:', hashHex);
 
-        // Extract description_hash from invoice
-        const descHashMatch = invoice.match(/description_hash=([0-9a-f]{64})/i);
-        if (!descHashMatch) {
+        if (!invoice) {
+            console.error('Invoice is undefined or null');
+            throw new Error('Invalid invoice: invoice data is missing');
+        }
+
+        // Parse invoice to get description_hash
+        const decodedInvoice = await fetch(`https://livingroomofsatoshi.com/api/v1/lnurl/decodeinvoice/${invoice}`);
+        if (!decodedInvoice.ok) {
+            throw new Error('Failed to decode invoice');
+        }
+        const invoiceData = await decodedInvoice.json();
+        console.log('Decoded invoice data:', invoiceData);
+
+        if (!invoiceData.description_hash) {
             throw new Error('Invoice missing description_hash');
         }
 
-        const matches = hashHex === descHashMatch[1].toLowerCase();
+        // Compare hashes
+        const matches = hashHex === invoiceData.description_hash;
         console.log('Hash verification result:', matches);
         return matches;
     } catch (error) {
@@ -381,36 +417,7 @@ async function verifyMetadataHash(metadata, invoice) {
     }
 }
 
-async function verifyMetadataHash(metadata, invoice) {
-    try {
-        // Convert metadata string to UTF-8 bytes
-        const metadataString = JSON.stringify(metadata);
-        const metadataBytes = new TextEncoder().encode(metadataString);
 
-        // Calculate SHA256 hash
-        const hashBuffer = await crypto.subtle.digest('SHA-256', metadataBytes);
-        const hashHex = Array.from(new Uint8Array(hashBuffer))
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-
-        // Extract description_hash from invoice
-        const descHashMatch = invoice.match(/description_hash=([0-9a-f]{64})/i);
-        if (!descHashMatch) {
-            throw new Error('Invoice missing description_hash');
-        }
-
-        const verified = hashHex === descHashMatch[1].toLowerCase();
-        if (!verified) {
-            console.error('Metadata hash verification failed');
-            console.error('Expected:', descHashMatch[1].toLowerCase());
-            console.error('Got:', hashHex);
-        }
-        return verified;
-    } catch (error) {
-        console.error('Error verifying metadata hash:', error);
-        throw error;
-    }
-}
 
 // QR code generation function
 async function updateQRCode(amount = null) {
@@ -448,19 +455,6 @@ async function updateQRCode(amount = null) {
         }
         console.log('Payment URL:', paymentUrl);
 
-        // Fetch invoice data from callback URL
-        const invoiceResponse = await fetch(paymentUrl);
-        if (!invoiceResponse.ok) {
-            throw new Error(`Failed to fetch invoice: ${invoiceResponse.status}`);
-        }
-        const invoiceData = await invoiceResponse.json();
-        console.log('Invoice data:', invoiceData);
-
-        // Verify metadata hash
-        if (!(await verifyMetadataHash(lnurlData.metadata, invoiceData.pr))) {
-            throw new Error('Invoice metadata verification failed');
-        }
-
         // Generate LNURL
         const encodedLNURL = encodeLNURL(paymentUrl);
         console.log('Encoded LNURL:', encodedLNURL);
@@ -470,13 +464,20 @@ async function updateQRCode(amount = null) {
         qrDiv.innerHTML = '';
 
         // Generate QR code with optimal settings for Lightning wallets
-        const qr = qrcode(10, 'M'); // Version 10 with medium error correction
-        qr.addData(encodedLNURL);
+        const qr = qrcode(0, 'L'); // Auto version selection with low error correction for better compatibility
+        qr.addData(encodedLNURL, 'Byte'); // Specify Byte mode for better URL handling
         qr.make();
 
-        // Create QR code image with proper size and margin
-        const qrImage = qr.createImgTag(5, 16); // Cell size 5, margin 16
-        qrDiv.innerHTML = qrImage;
+        // Generate SVG instead of GIF
+        const svgString = qr.createSvgTag(4, 0);
+        qrDiv.innerHTML = svgString;
+
+        // Add alt text for accessibility
+        const svgElement = qrDiv.querySelector('svg');
+        if (svgElement) {
+            svgElement.setAttribute('alt', 'Lightning Payment QR Code');
+            svgElement.setAttribute('aria-label', 'Scan this QR code to make a Lightning payment');
+        }
 
         // Update lightning address display
         const lightningAddressDiv = document.getElementById('lightningAddress');
