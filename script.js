@@ -32,8 +32,14 @@ function encodeLNURL(url) {
     try {
         console.log('Encoding URL:', url);
 
+        // Remove any amount parameters from the URL
+        const urlObj = new URL(url);
+        urlObj.searchParams.delete('amount');
+        const cleanUrl = urlObj.toString().toLowerCase();
+        console.log('Clean URL (no amount):', cleanUrl);
+
         // Convert URL to UTF-8 bytes
-        const data = new TextEncoder().encode(url.toLowerCase());
+        const data = new TextEncoder().encode(cleanUrl);
 
         // Convert to base64URL
         const base64 = base64UrlEncode(data);
@@ -42,7 +48,6 @@ function encodeLNURL(url) {
         const lnurl = 'LNURL' + base64;
         console.log('LNURL encoded:', lnurl);
 
-        // Return raw LNURL for QR code, lightning: prefix will be added for clipboard
         return lnurl;
     } catch (error) {
         console.error('Error in encodeLNURL:', error);
@@ -155,51 +160,37 @@ async function updateQRCode(amount = null) {
             throw new Error('Invalid LNURL data: missing callback URL');
         }
 
-        // Validate amount is within allowed range
-        let paymentUrl = lnurlData.callback;
+        // Generate base LNURL without amount
+        const encodedLNURL = encodeLNURL(lnurlData.callback);
+        console.log('Encoded LNURL:', encodedLNURL);
+
+        // Store amount in data attribute if provided
+        const qrDiv = document.getElementById('qrcode');
         if (amount !== null) {
             const millisats = parseInt(amount) * 1000;
-            console.log('Amount in millisats:', millisats);
 
+            // Validate amount is within allowed range
             if (!lnurlData.minSendable || !lnurlData.maxSendable) {
                 throw new Error('Invalid LNURL data: missing sendable limits');
             }
-
             if (millisats < lnurlData.minSendable || millisats > lnurlData.maxSendable) {
                 throw new Error(`Amount must be between ${lnurlData.minSendable / 1000} and ${lnurlData.maxSendable / 1000} sats`);
             }
 
-            // Construct callback URL with amount
-            const callbackUrl = new URL(lnurlData.callback);
-            callbackUrl.searchParams.set('amount', millisats.toString());
-            paymentUrl = callbackUrl.toString();
+            qrDiv.dataset.amount = millisats.toString();
+            qrDiv.dataset.callback = lnurlData.callback;
+            console.log('Stored amount in data attribute:', millisats);
+        } else {
+            delete qrDiv.dataset.amount;
+            delete qrDiv.dataset.callback;
         }
-        console.log('Payment URL:', paymentUrl);
-
-        // Fetch invoice data from callback URL
-        const invoiceResponse = await fetch(paymentUrl);
-        if (!invoiceResponse.ok) {
-            throw new Error(`Failed to fetch invoice: ${invoiceResponse.status}`);
-        }
-        const invoiceData = await invoiceResponse.json();
-        console.log('Invoice data:', invoiceData);
-
-        // Verify metadata hash
-        if (!(await verifyMetadataHash(lnurlData.metadata, invoiceData.pr))) {
-            throw new Error('Invoice metadata verification failed');
-        }
-
-        // Generate LNURL
-        const encodedLNURL = encodeLNURL(paymentUrl);
-        console.log('Encoded LNURL:', encodedLNURL);
 
         // Clear existing QR code
-        const qrDiv = document.getElementById('qrcode');
         qrDiv.innerHTML = '';
 
         // Generate QR code with optimal settings for Lightning wallets
-        const qr = qrcode(0, 'L'); // Auto version selection with low error correction for better compatibility
-        qr.addData(encodedLNURL, 'Byte'); // Specify Byte mode for better URL handling
+        const qr = qrcode(0, 'L');
+        qr.addData(encodedLNURL, 'Byte');
         qr.make();
 
         // Generate SVG instead of GIF
@@ -224,6 +215,37 @@ async function updateQRCode(amount = null) {
     }
 }
 
+// Callback URL handler for LNURL-pay
+async function handleCallback(callbackUrl, amount) {
+    try {
+        if (!callbackUrl || !amount) {
+            throw new Error('Missing required parameters for callback');
+        }
+
+        // Construct callback URL with amount
+        const url = new URL(callbackUrl);
+        url.searchParams.set('amount', amount.toString());
+        console.log('Callback URL with amount:', url.toString());
+
+        // Make callback request
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+            throw new Error(`Failed to fetch invoice: ${response.status}`);
+        }
+        const data = await response.json();
+        console.log('Callback response:', data);
+
+        if (!data.pr) {
+            throw new Error('No invoice in callback response');
+        }
+
+        return data.pr;
+    } catch (error) {
+        console.error('Error in callback handler:', error);
+        throw error;
+    }
+}
+
 // Donation Modal Functionality
 const modal = document.getElementById('donationModal');
 const btn = document.getElementById('donateBtn');
@@ -234,15 +256,36 @@ let selectedAmount = null;
 // Handle preset amount selection
 document.querySelectorAll('.preset-btn').forEach(button => {
     button.addEventListener('click', async function() {
-        const amount = this.dataset.amount;
-        selectedAmount = amount;
+        try {
+            const amount = this.dataset.amount;
+            console.log('Selected preset amount:', amount);
 
-        // Update button styles
-        document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('selected'));
-        this.classList.add('selected');
+            // Update button styles
+            document.querySelectorAll('.preset-btn').forEach(btn => btn.classList.remove('selected'));
+            this.classList.add('selected');
 
-        // Update QR code with amount
-        await updateQRCode(amount);
+            // Generate QR code with preset amount
+            await updateQRCode(amount);
+
+            // If there's a stored callback URL and amount, try to generate invoice
+            const qrDiv = document.getElementById('qrcode');
+            if (qrDiv.dataset.callback && qrDiv.dataset.amount) {
+                try {
+                    const invoice = await handleCallback(qrDiv.dataset.callback, qrDiv.dataset.amount);
+                    if (invoice) {
+                        console.log('Generated invoice:', invoice);
+                        qrDiv.dataset.invoice = invoice;
+                    }
+                } catch (error) {
+                    console.error('Error generating invoice:', error);
+                    qrDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                }
+            }
+        } catch (error) {
+            console.error('Error handling preset amount:', error);
+            const qrDiv = document.getElementById('qrcode');
+            qrDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+        }
     });
 });
 
